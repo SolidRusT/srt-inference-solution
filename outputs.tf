@@ -69,7 +69,7 @@ output "route53_zone_id" {
 
 output "api_domain" {
   description = "Full domain name for the inference API"
-  value       = var.create_route53_records ? "https://infer.${var.domain_name}:${var.app_port}" : null
+  value       = var.create_route53_records ? "http://infer.${var.domain_name}:${var.app_port}" : null
 }
 
 # Application Outputs
@@ -88,7 +88,7 @@ output "inference_solution_info" {
   description = "Summary of the inference solution deployment"
   value = {
     api_url            = "http://${module.ec2.instance_public_ip}:${var.app_port}"
-    api_domain         = var.create_route53_records ? "https://infer.${var.domain_name}:${var.app_port}" : null
+    api_domain         = var.create_route53_records ? "http://infer.${var.domain_name}:${var.app_port}" : null
     ssh_connection     = "ssh ubuntu@${module.ec2.instance_public_ip}"
     ecr_repository     = module.ecr.repository_url
     environment        = var.environment
