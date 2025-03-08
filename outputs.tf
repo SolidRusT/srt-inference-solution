@@ -90,6 +90,7 @@ output "inference_solution_info" {
     api_url            = "http://${module.ec2.instance_public_ip}:${var.app_port}"
     api_domain         = var.create_route53_records ? "http://infer.${var.domain_name}:${var.app_port}" : null
     ssh_connection     = "ssh -i ${var.key_name}.pem ubuntu@${module.ec2.instance_public_ip}"
+    ssh_remove_host    = "ssh-keygen -f ~/.ssh/known_hosts -R ${module.ec2.instance_public_ip}"
     ecr_repository     = module.ecr.repository_url
     environment        = var.environment
     deployed_timestamp = timestamp()

@@ -127,24 +127,12 @@ resource "aws_iam_instance_profile" "inference_instance" {
   role = aws_iam_role.inference_instance.name
 }
 
-# Create systemd service file content
+# Create user-data content
 locals {
-  systemd_service = templatefile("${path.module}/templates/inference-app.service.tpl", {
-    ecr_repository_url = var.ecr_repository_url
+  user_data = templatefile("${path.module}/templates/user-data.sh.tpl", {
     app_port           = var.app_port
     aws_region         = var.region
-  })
-  
-  docker_login_script = templatefile("${path.module}/templates/docker-login.sh.tpl", {
-    aws_region         = var.region
-  })
-  
-  user_data = templatefile("${path.module}/templates/user-data.sh.tpl", {
-    systemd_service     = base64encode(local.systemd_service)
-    docker_login_script = base64encode(local.docker_login_script)
-    app_port            = var.app_port
-    aws_region          = var.region
-    ecr_repository_url  = var.ecr_repository_url
+    ecr_repository_url = var.ecr_repository_url
   })
 }
 
@@ -156,7 +144,7 @@ resource "aws_instance" "inference" {
   vpc_security_group_ids = [aws_security_group.inference_instance.id]
   subnet_id              = var.subnet_id
   iam_instance_profile   = aws_iam_instance_profile.inference_instance.name
-  user_data              = base64encode(local.user_data)
+  user_data              = local.user_data
   user_data_replace_on_change = true
 
   root_block_device {

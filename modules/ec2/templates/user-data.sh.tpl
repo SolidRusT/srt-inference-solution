@@ -18,14 +18,33 @@ systemctl start docker
 
 # Create the Docker login script
 cat > /usr/local/bin/docker-login-ecr.sh << 'EOF'
-${docker_login_script}
+#!/bin/bash
+set -e
+
+# Get the ECR login token and use it to authenticate Docker
+aws ecr get-login-password --region ${aws_region} | docker login --username AWS --password-stdin $(aws sts get-caller-identity --query 'Account' --output text).dkr.ecr.${aws_region}.amazonaws.com
 EOF
 chmod +x /usr/local/bin/docker-login-ecr.sh
 
 # Create a service file for the inference app
-cat > /etc/systemd/system/inference-app.service << 'EOF'
-${systemd_service}
-EOF
+cat > /etc/systemd/system/inference-app.service << 'EOT'
+[Unit]
+Description=Inference API Application
+After=docker.service
+Requires=docker.service
+
+[Service]
+TimeoutStartSec=0
+Restart=always
+ExecStartPre=-/usr/bin/docker stop inference-app
+ExecStartPre=-/usr/bin/docker rm inference-app
+ExecStartPre=/usr/local/bin/docker-login-ecr.sh
+ExecStartPre=/usr/bin/docker pull ${ecr_repository_url}:latest
+ExecStart=/usr/bin/docker run --rm --name inference-app -p ${app_port}:${app_port} -e PORT=${app_port} -e AWS_REGION=${aws_region} ${ecr_repository_url}:latest
+
+[Install]
+WantedBy=multi-user.target
+EOT
 
 # Create a script to pull and run the latest image
 cat > /usr/local/bin/update-inference-app.sh << 'EOL'
