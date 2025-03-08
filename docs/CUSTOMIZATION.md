@@ -1,0 +1,296 @@
+# AWS EC2 Inference Solution - Customization Guide
+
+This document provides detailed instructions for customizing the inference solution to meet your specific requirements. The solution has been designed with modularity in mind, allowing for easy customization of various components.
+
+## Customizing the Application
+
+### Modifying the API
+
+The sample application is located in the `app/` directory. To customize the application:
+
+1. **Modify server.js**
+   - Update the routes and logic according to your needs
+   - Add new endpoints for your specific inference requirements
+   - Implement authentication/authorization as needed
+
+2. **Add Dependencies**
+   - Update `package.json` to include any additional libraries
+   - Install dependencies with `npm install`
+
+3. **Test Locally**
+   ```bash
+   cd app
+   npm install
+   npm start
+   ```
+
+4. **Update the Dockerfile**
+   - Change the base image if needed
+   - Add any additional build steps
+   - Optimize for production use
+
+5. **Rebuild and Deploy**
+   - Changes will be automatically built and deployed when running `terraform apply`
+
+### Implementing a Different Backend
+
+To replace the Node.js application with a different backend:
+
+1. **Create a New Application Directory**
+   - Create a new directory for your application code
+   - Implement your API with your preferred language/framework
+
+2. **Create a New Dockerfile**
+   - Define the build process for your application
+   - Ensure it exposes the appropriate port
+   - Include any necessary environment variables
+
+3. **Update the Build Module**
+   - Modify `modules/build/main.tf` to point to your new application directory
+   - Update the file hash triggers to match your application files
+
+4. **Update the EC2 Module**
+   - Adjust `modules/ec2/templates/inference-app.service.tpl` if needed
+   - Update ports and environment variables
+
+## Customizing Infrastructure
+
+### Instance Type and Size
+
+To change the EC2 instance type:
+
+1. Update `terraform.tfvars`:
+   ```hcl
+   instance_type = "t3.medium"  # Choose the appropriate instance type
+   ```
+
+2. Adjust the root volume size in `terraform.tfvars` or `variables.tf`:
+   ```hcl
+   # In variables.tf
+   variable "root_volume_size" {
+     description = "Size of the root volume in GB"
+     type        = number
+     default     = 50  # Increase from the default 30GB
+   }
+   ```
+
+### Networking Configuration
+
+To customize the VPC and networking:
+
+1. **Change CIDR Ranges**:
+   ```hcl
+   # In terraform.tfvars
+   vpc_cidr = "10.1.0.0/16"  # Set a custom CIDR range
+   ```
+
+2. **Modify Subnet Configuration**:
+   Edit `main.tf` to change the subnet allocation:
+   ```hcl
+   private_subnets = [for k, v in local.azs : cidrsubnet(var.vpc_cidr, 8, k)]
+   public_subnets  = [for k, v in local.azs : cidrsubnet(var.vpc_cidr, 8, k + 128)]
+   ```
+
+3. **Adjust NAT Gateway Configuration**:
+   Edit `modules/vpc/main.tf`:
+   ```hcl
+   enable_nat_gateway = true
+   single_nat_gateway = false  # Set to false for one NAT Gateway per AZ
+   one_nat_gateway_per_az = true
+   ```
+
+### Security Group Rules
+
+To customize security group rules:
+
+1. Edit `modules/ec2/main.tf` to modify the security group:
+   ```hcl
+   # Add or modify ingress rules
+   ingress {
+     from_port   = 9090
+     to_port     = 9090
+     protocol    = "tcp"
+     cidr_blocks = var.allowed_cidr_blocks
+     description = "Prometheus metrics"
+   }
+   ```
+
+2. Restrict egress traffic if needed:
+   ```hcl
+   # Replace the default egress rule
+   egress {
+     from_port   = 443
+     to_port     = 443
+     protocol    = "tcp"
+     cidr_blocks = ["0.0.0.0/0"]
+     description = "HTTPS outbound only"
+   }
+   ```
+
+### Domain and DNS Configuration
+
+To customize DNS settings:
+
+1. Update `terraform.tfvars`:
+   ```hcl
+   domain_name = "your-custom-domain.com"
+   create_route53_records = true
+   ```
+
+2. Add additional DNS records by editing `modules/route53/main.tf`:
+   ```hcl
+   resource "aws_route53_record" "api" {
+     zone_id = data.aws_route53_zone.selected.zone_id
+     name    = "api.${var.domain_name}"
+     type    = "A"
+     ttl     = "300"
+     records = [var.instance_public_ip]
+   }
+   ```
+
+## Advanced Customization
+
+### High Availability Setup
+
+To implement a high-availability setup:
+
+1. **Create an Auto Scaling Group Module**
+   - Create `modules/asg/main.tf`, `variables.tf`, and `outputs.tf`
+   - Implement launch template and auto scaling group resources
+   - Configure health checks and scaling policies
+
+2. **Add a Load Balancer Module**
+   - Create `modules/alb/main.tf`, `variables.tf`, and `outputs.tf`
+   - Configure listeners, target groups, and security groups
+
+3. **Update Main Configuration**
+   - Replace the EC2 module with the ASG module in `main.tf`
+   - Add the ALB module to `main.tf`
+   - Update the Route53 module to point to the load balancer
+
+### HTTPS Support
+
+To add HTTPS support:
+
+1. **Create an ACM Certificate Module**
+   - Create `modules/acm/main.tf`, `variables.tf`, and `outputs.tf`
+   - Configure certificate validation with Route53
+
+2. **Update Security Groups**
+   - Add port 443 ingress rule to the security group
+
+3. **Configure the Application**
+   - Update the application to handle HTTPS
+   - Or implement a reverse proxy like Nginx
+
+### CI/CD Integration
+
+To integrate with CI/CD pipelines:
+
+1. **Separate Build/Deploy Processes**
+   - Move the Docker build logic out of Terraform
+   - Create CI/CD pipeline configuration files (GitHub Actions, Jenkins, etc.)
+
+2. **Add Terraform Remote Backend Configuration**
+   - Update `backend.tf` to use a more collaborative backend like Terraform Cloud
+
+3. **Create Pipeline Stages**
+   - Build and test the application
+   - Push images to ECR
+   - Run Terraform to update infrastructure
+   - Run integration tests
+
+## Implementing a Custom Inference Engine
+
+To replace the sample API with a real inference engine:
+
+1. **Choose an Inference Framework**
+   - TensorFlow Serving
+   - PyTorch
+   - ONNX Runtime
+   - Custom model server
+
+2. **Create an Appropriate Dockerfile**
+   - Base it on an ML framework image
+   - Include your model artifacts
+   - Configure the server
+
+3. **Update Resource Allocation**
+   - Choose an appropriate instance type (GPU if needed)
+   - Adjust memory and CPU allocation
+   - Configure swap if necessary
+
+4. **Update Monitoring**
+   - Add model-specific metrics
+   - Configure appropriate alarms
+   - Implement request/response logging
+
+## Example: Customizing for PyTorch Inference
+
+Here's an example of customizing the solution for PyTorch inference:
+
+1. **Create a Custom Dockerfile**
+   ```dockerfile
+   FROM pytorch/pytorch:1.12.0-cuda11.3-cudnn8-runtime
+
+   WORKDIR /app
+
+   COPY requirements.txt .
+   RUN pip install --no-cache-dir -r requirements.txt
+
+   COPY models/ /app/models/
+   COPY app/ /app/
+
+   EXPOSE 8080
+
+   CMD ["python", "server.py"]
+   ```
+
+2. **Choose an Appropriate Instance Type**
+   ```hcl
+   # In terraform.tfvars
+   instance_type = "g4dn.xlarge"  # GPU-enabled instance
+   ```
+
+3. **Update IAM Permissions for S3**
+   ```hcl
+   # In modules/ec2/main.tf
+   resource "aws_iam_policy" "s3_model_access" {
+     name        = "${var.name}-s3-model-access"
+     description = "Policy for S3 model access"
+
+     policy = jsonencode({
+       Version = "2012-10-17"
+       Statement = [
+         {
+           Action = [
+             "s3:GetObject",
+             "s3:ListBucket"
+           ]
+           Effect   = "Allow"
+           Resource = [
+             "arn:aws:s3:::${var.model_bucket}",
+             "arn:aws:s3:::${var.model_bucket}/*"
+           ]
+         }
+       ]
+     })
+   }
+
+   resource "aws_iam_role_policy_attachment" "s3_model_access_attach" {
+     role       = aws_iam_role.inference_instance.name
+     policy_arn = aws_iam_policy.s3_model_access.arn
+   }
+   ```
+
+4. **Update the systemd Service Template**
+   ```hcl
+   # In modules/ec2/templates/inference-app.service.tpl
+   ExecStart=/usr/bin/docker run --rm --name inference-app \
+       -p ${app_port}:${app_port} \
+       -e PORT=${app_port} \
+       -e AWS_REGION=${aws_region} \
+       -e MODEL_BUCKET=${model_bucket} \
+       --gpus all \
+       ${ecr_repository_url}:latest
+   ```

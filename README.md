@@ -13,6 +13,16 @@ The solution includes the following components:
 - **IAM Roles**: Properly scoped permissions for the EC2 instance
 - **Security Groups**: Configured for secure access to the application
 
+## Documentation
+
+Detailed documentation is available in the `docs/` directory:
+
+- [Architecture Document](./docs/ARCHITECTURE.md): System design and components
+- [Operations Guide](./docs/OPERATIONS.md): Deployment and maintenance instructions
+- [Development Roadmap](./docs/DEVELOPMENT_ROADMAP.md): Current status and future plans
+- [API Reference](./docs/API_REFERENCE.md): API endpoints documentation
+- [Customization Guide](./docs/CUSTOMIZATION.md): How to customize the solution
+
 ## Prerequisites
 
 - AWS CLI configured with appropriate credentials
@@ -107,6 +117,9 @@ terraform destroy
 
 ## Troubleshooting
 
+For detailed troubleshooting steps, refer to the [Operations Guide](./docs/OPERATIONS.md#troubleshooting).
+
+Common issues:
 - Check CloudWatch logs for application issues
 - SSH to the instance using the provided connection string
 - Use the AWS SSM Session Manager for secure console access
@@ -115,6 +128,10 @@ terraform destroy
   - Check the bucket name in `backend.tf` matches the created bucket
   - Ensure you have proper permissions to read/write to the bucket
   - For state lock issues, you may need to manually release locks in S3 using the AWS console
+
+## Project Status
+
+This project is actively maintained. See the [Development Roadmap](./docs/DEVELOPMENT_ROADMAP.md) for information about current status, planned features, and technical debt.
 
 ## License
 
