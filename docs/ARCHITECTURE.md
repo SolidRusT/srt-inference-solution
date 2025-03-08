@@ -7,6 +7,7 @@ This document describes the architecture and design decisions for the AWS EC2 In
 ## Core Principles
 
 The solution was designed with the following principles:
+
 - **Idempotency**: Resources can be created, updated, or destroyed reliably
 - **Simplicity**: Minimal configuration required to deploy the complete solution
 - **Security**: Follow AWS best practices for secure infrastructure
@@ -20,8 +21,9 @@ The solution consists of the following core components:
 ### 1. Infrastructure Components
 
 #### VPC and Networking
+
 - **VPC**: Isolates the solution in a dedicated virtual network
-- **Subnets**: 
+- **Subnets**:
   - **Public Subnets**: Host the EC2 instance with public internet access
   - **Private Subnets**: Reserved for future expansion (databases, internal services)
 - **NAT Gateway**: Enables outbound internet access from private subnets
@@ -29,6 +31,7 @@ The solution consists of the following core components:
 - **Security Groups**: Restrict network traffic to the EC2 instance
 
 #### Compute
+
 - **EC2 Instance**: Hosts the containerized application
   - Uses latest Ubuntu AMI from Canonical
   - Configured with user-data script to install Docker and set up services
@@ -36,17 +39,20 @@ The solution consists of the following core components:
   - Security group limits access to specified ports and IP ranges
 
 #### Storage and Registry
+
 - **ECR Repository**: Stores Docker container images
   - Lifecycle policies to limit stored images
   - Repository policies for secure access
 
 #### DNS Management
+
 - **Route53 Records**: Maps domain names to EC2 public IP
   - Creates `infer.domain.com` pointing to the EC2 instance
 
 ### 2. Application Components
 
 #### Docker Container
+
 - NodeJS Express application
 - Simple API endpoints:
   - `/`: Basic information
@@ -54,18 +60,20 @@ The solution consists of the following core components:
   - `/api/infer`: Sample inference endpoint
 
 #### Systemd Service
+
 - Manages the Docker container lifecycle
 - Ensures container starts on instance boot
 - Handles automatic restarts on failure
 
 #### Update Mechanism
+
 - Hourly cron job to check for new images
 - Automated login to ECR and image pulls
 - Seamless container updates
 
 ## Infrastructure as Code Structure
 
-```
+```t
 inference-solution/
 ├── app/                         # Application code
 │   ├── Dockerfile               # Container definition
@@ -118,14 +126,17 @@ inference-solution/
 ## Future Enhancements
 
 1. **Scaling**:
+
    - Auto Scaling Group for high availability
    - Load Balancer for traffic distribution
 
 2. **Security**:
+
    - HTTPS with ACM certificates
    - WAF integration for API protection
 
 3. **Monitoring**:
+
    - CloudWatch alarms and dashboards
    - Log aggregation and analysis
 

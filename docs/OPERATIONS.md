@@ -70,8 +70,6 @@ aws ssm put-parameter \
     --overwrite
 ```
 
-
-
 ### Step 3: Clone the Repository
 
 ```bash
@@ -211,7 +209,7 @@ curl http://<instance-public-ip>:8080/health
 A successful response will be:
 
 ```json
-{"status":"ok"}
+{ "status": "ok" }
 ```
 
 ### CloudWatch Metrics
@@ -230,21 +228,25 @@ The solution collects standard EC2 metrics in CloudWatch. Key metrics to monitor
 Examples of testing the API with cURL:
 
 Health check:
+
 ```bash
 curl http://<instance-public-ip>:8080/health
 ```
 
 Root endpoint:
+
 ```bash
 curl http://<instance-public-ip>:8080/
 ```
 
 List available models:
+
 ```bash
 curl http://<instance-public-ip>:8080/v1/models
 ```
 
 Chat completions (OpenAI-compatible API):
+
 ```bash
 curl -X POST \
   http://<instance-public-ip>:8080/v1/chat/completions \
@@ -259,6 +261,7 @@ curl -X POST \
 ```
 
 Legacy inference endpoint:
+
 ```bash
 curl -X POST \
   http://<instance-public-ip>:8080/api/infer \
@@ -273,6 +276,7 @@ curl -X POST \
 **Symptoms**: `terraform apply` fails during the build step.
 
 **Resolution**:
+
 1. Check the build script output
 2. Verify AWS credentials have ECR permissions
 3. Run the build script manually to see detailed errors:
@@ -287,6 +291,7 @@ bash build_and_push.sh <ecr-repo-url> <aws-region> <app-path>
 **Symptoms**: EC2 instance is running but the API is not accessible.
 
 **Resolution**:
+
 1. Connect to the instance using Session Manager
 2. Check service status: `sudo systemctl status inference-app`
 3. View service logs: `journalctl -u inference-app`
@@ -298,6 +303,7 @@ bash build_and_push.sh <ecr-repo-url> <aws-region> <app-path>
 **Symptoms**: API proxy is running but requests to vLLM endpoints fail with 503 errors.
 
 **Resolution**:
+
 1. Check vLLM service status: `sudo systemctl status vllm`
 2. View service logs: `journalctl -u vllm -n 100`
 3. Check if NVIDIA drivers are installed (if using GPU): `nvidia-smi`
@@ -310,6 +316,7 @@ bash build_and_push.sh <ecr-repo-url> <aws-region> <app-path>
 **Symptoms**: vLLM service crashes or fails to start with out of memory errors.
 
 **Resolution**:
+
 1. Reduce `gpu_memory_utilization` in terraform.tfvars (e.g., from 0.98 to 0.8)
 2. Switch to a smaller model or a quantized version
 3. For GPU instances, consider using a larger instance type with more GPU memory
@@ -321,6 +328,7 @@ bash build_and_push.sh <ecr-repo-url> <aws-region> <app-path>
 **Symptoms**: The domain name does not resolve to the EC2 instance.
 
 **Resolution**:
+
 1. Verify Route53 records in AWS console
 2. Check DNS propagation: `dig infer.<domain-name>`
 3. Ensure the correct domain name is specified in `terraform.tfvars`
@@ -331,6 +339,7 @@ bash build_and_push.sh <ecr-repo-url> <aws-region> <app-path>
 **Symptoms**: Terraform operations fail with state-related errors.
 
 **Resolution**:
+
 1. Verify the S3 bucket exists and is accessible
 2. Check that the bucket name in `backend.tf` is correct
 3. Ensure AWS credentials have S3 permissions
@@ -390,6 +399,7 @@ terraform destroy
 ```
 
 This will:
+
 1. Terminate the EC2 instance
 2. Delete the ECR repository and images
 3. Remove DNS records

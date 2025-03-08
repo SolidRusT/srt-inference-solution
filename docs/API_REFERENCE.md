@@ -7,13 +7,14 @@ This document provides details about the REST API endpoints exposed by the infer
 ## Base URLs
 
 - **Development**: `http://localhost:8080`
-- **Production**: 
+- **Production**:
   - IP-based: `http://<ec2-instance-ip>:8080`
   - Domain-based: `https://infer.<your-domain>:8080` (when DNS records are enabled)
 
 ## Authentication
 
 The API currently does not implement authentication. Future versions will include:
+
 - API key authentication
 - JWT token-based authentication
 - AWS IAM-based authentication
@@ -24,7 +25,7 @@ The API currently does not implement authentication. Future versions will includ
 
 Verify the API service is running properly.
 
-```
+```http
 GET /health
 ```
 
@@ -44,7 +45,7 @@ GET /health
 
 Get basic information about the API service.
 
-```
+```http
 GET /
 ```
 
@@ -66,7 +67,7 @@ GET /
 
 Get information about the available models.
 
-```
+```http
 GET /v1/models
 ```
 
@@ -95,7 +96,7 @@ GET /v1/models
 
 Submit chat requests in OpenAI format for inference processing.
 
-```
+```http
 POST /v1/chat/completions
 ```
 
@@ -105,8 +106,8 @@ POST /v1/chat/completions
 {
   "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
   "messages": [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Tell me about AWS EC2."}
+    { "role": "system", "content": "You are a helpful assistant." },
+    { "role": "user", "content": "Tell me about AWS EC2." }
   ],
   "max_tokens": 512,
   "temperature": 0.7,
@@ -151,7 +152,7 @@ POST /v1/chat/completions
 
 Submit data for inference processing using the legacy format. This endpoint is maintained for backward compatibility.
 
-```
+```http
 POST /api/infer
 ```
 
@@ -199,6 +200,7 @@ All error responses follow this format:
 ## Rate Limiting
 
 Currently, the API does not implement rate limiting. Future versions will include rate limiting based on:
+
 - IP address
 - API key
 - User/Client ID
@@ -214,16 +216,19 @@ The API follows semantic versioning (MAJOR.MINOR.PATCH). The current version can
 To run the API locally:
 
 1. Navigate to the app directory:
+
    ```bash
    cd app
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    ```
 
 3. Start the server:
+
    ```bash
    npm start
    ```
@@ -235,11 +240,13 @@ To run the API locally:
 To build and run the API using Docker:
 
 1. Build the image:
+
    ```bash
    docker build -t inference-app .
    ```
 
 2. Run the container:
+
    ```bash
    docker run -p 8080:8080 inference-app
    ```
@@ -251,16 +258,19 @@ To build and run the API using Docker:
 Examples of testing the API with cURL:
 
 Health check:
+
 ```bash
 curl http://localhost:8080/health
 ```
 
 Root endpoint:
+
 ```bash
 curl http://localhost:8080/
 ```
 
 Inference endpoint:
+
 ```bash
 curl -X POST \
   http://localhost:8080/api/infer \
@@ -273,21 +283,25 @@ curl -X POST \
 The API will be enhanced with the following features in future releases:
 
 1. **Authentication and Authorization**:
+
    - API key management
    - OAuth 2.0 / OpenID Connect integration
    - Role-based access control
 
 2. **Enhanced Inference Capabilities**:
+
    - Support for multiple model types
    - Batched inference requests
    - Asynchronous inference processing
 
 3. **Performance Features**:
+
    - Response caching
    - Request queuing
    - Throttling controls
 
 4. **Monitoring and Logging**:
+
    - Detailed request/response logging
    - Performance metrics
    - Tracing support

@@ -63,4 +63,5 @@ For questions or support regarding this solution, contact the infrastructure tea
 ## Acknowledgments
 
 This project was developed by the OpenBet infrastructure team with contributions from:
+
 - Initial development and design in March 2025

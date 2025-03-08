@@ -62,10 +62,10 @@ aws s3api put-bucket-encryption \
 3. Make sure the S3 bucket name in `backend.tf` matches the bucket you created
 4. Deploy with Terraform:
 
-```bash
-terraform init
-terraform apply
-```
+   ```bash
+   terraform init
+   terraform apply
+   ```
 
 5. Access your API using the outputs provided by Terraform
 
@@ -84,7 +84,8 @@ Edit `terraform.tfvars` to customize:
 The solution comes with a pre-configured vLLM setup. To customize:
 
 1. Update `terraform.tfvars` to change the model and instance parameters:
-   ```
+
+   ```hcl
    # Example: Switch to GPU and use a different model
    use_gpu_instance = true
    gpu_instance_type = "g4dn.xlarge"
@@ -93,7 +94,6 @@ The solution comes with a pre-configured vLLM setup. To customize:
    ```
 
 2. If needed, modify the API proxy in `app/server.js`
-   
 3. Run `terraform apply` to rebuild and redeploy
 
 For detailed configuration options, see the [Customization Guide](./docs/CUSTOMIZATION.md).
@@ -134,6 +134,7 @@ terraform destroy
 For detailed troubleshooting steps, refer to the [Operations Guide](./docs/OPERATIONS.md#troubleshooting).
 
 Common issues:
+
 - Check CloudWatch logs for application issues
 - SSH to the instance using the provided connection string
 - Use the AWS SSM Session Manager for secure console access
@@ -178,6 +179,7 @@ git checkout v1.0.0
 ```
 
 The version number format follows semantic versioning:
+
 - MAJOR version for incompatible API changes (v1.0.0 → v2.0.0)
 - MINOR version for backward-compatible functionality additions (v1.0.0 → v1.1.0)
 - PATCH version for backward-compatible bug fixes (v1.0.0 → v1.0.1)

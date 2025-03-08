@@ -20,7 +20,7 @@ For a quick start, refer to the [Operations Guide](./OPERATIONS.md) which contai
 
 ## Project Structure
 
-```
+```t
 inference-solution/
 ├── app/                         # Application code
 │   ├── Dockerfile               # Container definition

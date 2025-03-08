@@ -14,8 +14,8 @@ email_address     = "admin@live.ca.obenv.net"
 
 # EC2 instance settings
 instance_type     = "t3.small"
-use_gpu_instance  = false          # Set to true when ready to use GPU instances
-gpu_instance_type = "g4dn.xlarge" # Will be used when use_gpu_instance = true
+use_gpu_instance  = true
+gpu_instance_type = "g5.2xlarge"
 key_name          = "ob-live-open-inference-oregon"
 app_port          = 8080
 
