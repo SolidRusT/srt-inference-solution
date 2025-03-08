@@ -38,8 +38,16 @@ module "ec2" {
   vpc_id            = module.vpc.vpc_id
   subnet_id         = module.vpc.public_subnets[0]  # Use first public subnet
   instance_type     = var.instance_type
+  use_gpu           = var.use_gpu_instance
+  gpu_instance_type = var.gpu_instance_type
   key_name          = var.key_name
   app_port          = var.app_port
+  vllm_port         = var.vllm_port
+  model_id          = var.model_id
+  max_model_len     = var.max_model_len
+  gpu_memory_utilization = var.gpu_memory_utilization
+  vllm_image_tag    = var.vllm_image_tag
+  hf_token_parameter_name = var.hf_token_parameter_name
   region            = var.region
   allowed_cidr_blocks = concat(["0.0.0.0/0"], var.allowed_admin_ips)
   ecr_repository_url = module.ecr.repository_url

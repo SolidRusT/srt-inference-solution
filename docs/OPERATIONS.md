@@ -36,7 +36,43 @@ aws s3api put-bucket-encryption \
     --server-side-encryption-configuration '{"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}'
 ```
 
-### Step 2: Clone the Repository
+### Step 2: Store HuggingFace Token in SSM Parameter Store
+
+The vLLM service requires a HuggingFace token to access models.
+
+Validate your token locally:
+
+```bash
+export HF_TOKEN=<your_actual_token>
+curl https://huggingface.co/api/whoami-v2 -H "Authorization: Bearer ${HF_TOKEN}"
+```
+
+Store your token securely in SSM Parameter Store:
+
+```bash
+export HF_TOKEN=<your_actual_token>
+aws ssm put-parameter \
+    --name "/inference/hf_token" \
+    --value "${HF_TOKEN}" \
+    --type SecureString \
+    --region us-west-2
+```
+
+If you need to update the token later:
+
+```bash
+export HF_TOKEN=<your_new_token>
+aws ssm put-parameter \
+    --name "/inference/hf_token" \
+    --value "${HF_TOKEN}" \
+    --type SecureString \
+    --region us-west-2 \
+    --overwrite
+```
+
+
+
+### Step 3: Clone the Repository
 
 ```bash
 git clone <repository-url>
@@ -189,6 +225,47 @@ The solution collects standard EC2 metrics in CloudWatch. Key metrics to monitor
 
 ## Troubleshooting
 
+### Testing the API
+
+Examples of testing the API with cURL:
+
+Health check:
+```bash
+curl http://<instance-public-ip>:8080/health
+```
+
+Root endpoint:
+```bash
+curl http://<instance-public-ip>:8080/
+```
+
+List available models:
+```bash
+curl http://<instance-public-ip>:8080/v1/models
+```
+
+Chat completions (OpenAI-compatible API):
+```bash
+curl -X POST \
+  http://<instance-public-ip>:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+    "messages": [
+      {"role": "user", "content": "Explain what AWS EC2 is in one paragraph."}
+    ],
+    "max_tokens": 100
+  }'
+```
+
+Legacy inference endpoint:
+```bash
+curl -X POST \
+  http://<instance-public-ip>:8080/api/infer \
+  -H 'Content-Type: application/json' \
+  -d '{"data": "Explain what AWS EC2 is in one paragraph."}'
+```
+
 ### Common Issues and Resolutions
 
 #### Docker Image Build Fails
@@ -215,6 +292,29 @@ bash build_and_push.sh <ecr-repo-url> <aws-region> <app-path>
 3. View service logs: `journalctl -u inference-app`
 4. Verify Docker is running: `sudo systemctl status docker`
 5. Check container status: `docker ps -a`
+
+#### vLLM Service Not Starting
+
+**Symptoms**: API proxy is running but requests to vLLM endpoints fail with 503 errors.
+
+**Resolution**:
+1. Check vLLM service status: `sudo systemctl status vllm`
+2. View service logs: `journalctl -u vllm -n 100`
+3. Check if NVIDIA drivers are installed (if using GPU): `nvidia-smi`
+4. Verify the HuggingFace token is accessible: `sudo /usr/local/bin/get-hf-token.sh`
+5. Check if the model is available for download: Browse to the model page on HuggingFace
+6. For GPU instances, verify Docker NVIDIA runtime: `docker info | grep -A 10 Runtimes`
+
+#### Out of Memory Errors with vLLM
+
+**Symptoms**: vLLM service crashes or fails to start with out of memory errors.
+
+**Resolution**:
+1. Reduce `gpu_memory_utilization` in terraform.tfvars (e.g., from 0.98 to 0.8)
+2. Switch to a smaller model or a quantized version
+3. For GPU instances, consider using a larger instance type with more GPU memory
+4. Check for other processes consuming GPU memory: `nvidia-smi`
+5. Restart the vLLM service: `sudo systemctl restart vllm`
 
 #### DNS Records Not Resolving
 

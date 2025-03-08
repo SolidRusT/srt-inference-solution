@@ -109,10 +109,36 @@ resource "aws_iam_policy" "ecr_access" {
   })
 }
 
+# IAM policy for SSM Parameter access (for HF token)
+resource "aws_iam_policy" "ssm_parameter_access" {
+  name        = "${var.name}-ssm-parameter-access"
+  description = "Policy for SSM Parameter access"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters"
+        ]
+        Effect   = "Allow"
+        Resource = "arn:aws:ssm:${var.region}:*:parameter${var.hf_token_parameter_name}"
+      }
+    ]
+  })
+}
+
 # Attach policy to role
 resource "aws_iam_role_policy_attachment" "ecr_access_attach" {
   role       = aws_iam_role.inference_instance.name
   policy_arn = aws_iam_policy.ecr_access.arn
+}
+
+# Attach SSM parameter access policy
+resource "aws_iam_role_policy_attachment" "ssm_parameter_access_attach" {
+  role       = aws_iam_role.inference_instance.name
+  policy_arn = aws_iam_policy.ssm_parameter_access.arn
 }
 
 # Attach SSM policy for easier management
@@ -130,16 +156,23 @@ resource "aws_iam_instance_profile" "inference_instance" {
 # Create user-data content
 locals {
   user_data = templatefile("${path.module}/templates/user-data.sh.tpl", {
-    app_port           = var.app_port
-    aws_region         = var.region
-    ecr_repository_url = var.ecr_repository_url
+    app_port                = var.app_port
+    vllm_port               = var.vllm_port
+    aws_region              = var.region
+    ecr_repository_url      = var.ecr_repository_url
+    use_gpu                 = var.use_gpu
+    model_id                = var.model_id
+    max_model_len           = var.max_model_len
+    gpu_memory_utilization  = var.gpu_memory_utilization
+    vllm_image_tag          = var.vllm_image_tag
+    hf_token_parameter_name = var.hf_token_parameter_name
   })
 }
 
 # EC2 instance
 resource "aws_instance" "inference" {
   ami                    = data.aws_ami.ubuntu.id
-  instance_type          = var.instance_type
+  instance_type          = var.use_gpu ? var.gpu_instance_type : var.instance_type
   key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.inference_instance.id]
   subnet_id              = var.subnet_id

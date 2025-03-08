@@ -1,7 +1,7 @@
 {
-  "name": "inference-api",
+  "name": "vllm-inference-api",
   "version": "1.0.0",
-  "description": "Simple inference API",
+  "description": "API proxy for vLLM OpenAI-compatible inference service",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

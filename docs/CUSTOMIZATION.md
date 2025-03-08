@@ -200,30 +200,34 @@ To integrate with CI/CD pipelines:
    - Run Terraform to update infrastructure
    - Run integration tests
 
-## Implementing a Custom Inference Engine
+## Customizing the vLLM Inference Engine
 
-To replace the sample API with a real inference engine:
+The solution comes with built-in support for the vLLM OpenAI-compatible API service. Here's how to customize it for your needs:
 
-1. **Choose an Inference Framework**
-   - TensorFlow Serving
-   - PyTorch
-   - ONNX Runtime
-   - Custom model server
+1. **Changing the Model**
+   - Update the `model_id` variable in `terraform.tfvars` to use a different model from HuggingFace
+   - Adjust `max_model_len` in `terraform.tfvars` to match the context window of the selected model
 
-2. **Create an Appropriate Dockerfile**
-   - Base it on an ML framework image
-   - Include your model artifacts
-   - Configure the server
+2. **GPU Configuration**
+   - Set `use_gpu_instance` to `true` in `terraform.tfvars` to use a GPU instance
+   - Modify `gpu_instance_type` to select a different instance type (e.g., `g5.xlarge` for newer GPUs)
+   - Adjust `gpu_memory_utilization` to control memory allocation (0.0-1.0)
 
-3. **Update Resource Allocation**
-   - Choose an appropriate instance type (GPU if needed)
-   - Adjust memory and CPU allocation
-   - Configure swap if necessary
+3. **Performance Tuning**
+   - Modify the systemd service at `/etc/systemd/system/vllm.service` on the instance to add vLLM-specific parameters
+   - Common parameters include `--tensor-parallel-size`, `--block-size`, `--swap-space`, and `--gpu-memory-utilization`
 
-4. **Update Monitoring**
-   - Add model-specific metrics
-   - Configure appropriate alarms
-   - Implement request/response logging
+4. **Using Quantized Models**
+   - For AWQ models, no special configuration is needed
+   - For GPTQ models, add `--quantization gptq` to the vLLM command line
+   - For GGUF models, a different approach may be required as vLLM doesn't natively support GGUF
+
+5. **Configuring HuggingFace Token**
+   - The solution retrieves the HuggingFace token from SSM Parameter Store
+   - Create a secure string parameter in AWS SSM Parameter Store with the name specified in `hf_token_parameter_name` (default is `/inference/hf_token`)
+   - Store your HuggingFace token as the parameter value
+   - The instance has the necessary IAM permissions to retrieve this parameter
+   - For models that don't require a token, you can use a placeholder value
 
 ## Example: Customizing for PyTorch Inference
 

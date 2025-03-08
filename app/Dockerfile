@@ -14,5 +14,11 @@ COPY . .
 # Expose the API port
 EXPOSE 8080
 
+# Define default environment variables
+ENV PORT=8080
+ENV VLLM_PORT=8000
+ENV VLLM_HOST=localhost
+ENV MODEL_ID="solidrust/Hermes-3-Llama-3.1-8B-AWQ"
+
 # Run the application
 CMD ["node", "server.js"]

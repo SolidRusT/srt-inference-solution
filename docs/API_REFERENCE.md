@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document provides details about the REST API endpoints exposed by the inference application. The sample application is built using Node.js and Express, and includes basic endpoints for health checking and a mock inference service.
+This document provides details about the REST API endpoints exposed by the inference application. The API is built using Node.js and Express, acting as a proxy to the vLLM OpenAI-compatible inference service running on the same machine.
 
 ## Base URLs
 
@@ -62,9 +62,94 @@ GET /
 
 - `200 OK`: Request successful
 
-### Inference Endpoint
+### List Available Models
 
-Submit data for inference processing.
+Get information about the available models.
+
+```
+GET /v1/models
+```
+
+#### Response
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+      "object": "model",
+      "created": 1710323150,
+      "owned_by": "vLLM"
+    }
+  ]
+}
+```
+
+#### Status Codes
+
+- `200 OK`: Request successful
+- `503 Service Unavailable`: vLLM service unavailable
+
+### OpenAI-Compatible Chat Completion Endpoint
+
+Submit chat requests in OpenAI format for inference processing.
+
+```
+POST /v1/chat/completions
+```
+
+#### Request Body
+
+```json
+{
+  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "messages": [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Tell me about AWS EC2."}
+  ],
+  "max_tokens": 512,
+  "temperature": 0.7,
+  "stream": false
+}
+```
+
+#### Response
+
+```json
+{
+  "id": "cmpl-7a2e8938ebc44755bdcc45d37df1b106",
+  "object": "chat.completion",
+  "created": 1710323152,
+  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "AWS EC2 (Elastic Compute Cloud) is a web service provided by Amazon Web Services that offers resizable compute capacity in the cloud..."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 27,
+    "completion_tokens": 142,
+    "total_tokens": 169
+  }
+}
+```
+
+#### Status Codes
+
+- `200 OK`: Inference successful
+- `400 Bad Request`: Invalid input data
+- `500 Internal Server Error`: Processing error
+- `503 Service Unavailable`: vLLM service unavailable
+
+### Legacy Inference Endpoint
+
+Submit data for inference processing using the legacy format. This endpoint is maintained for backward compatibility.
 
 ```
 POST /api/infer
@@ -85,8 +170,9 @@ POST /api/infer
   "input": {
     "data": "Your input data here"
   },
-  "result": "This is a sample inference result",
-  "timestamp": "2025-03-08T12:34:56.789Z"
+  "result": "This is the inference result based on your input data...",
+  "timestamp": "2025-03-08T12:34:56.789Z",
+  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ"
 }
 ```
 
@@ -95,6 +181,7 @@ POST /api/infer
 - `200 OK`: Inference successful
 - `400 Bad Request`: Invalid input data
 - `500 Internal Server Error`: Processing error
+- `503 Service Unavailable`: vLLM service unavailable
 
 ## Error Handling
 

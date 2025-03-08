@@ -1,6 +1,6 @@
-# AWS EC2 Inference Solution
+# AWS EC2 Inference Solution with vLLM
 
-This Terraform solution deploys a fully automated inference solution on AWS EC2 with Docker and a "Hello World" API.
+This Terraform solution deploys a fully automated LLM inference solution on AWS EC2 using vLLM for OpenAI-compatible API endpoints. The solution supports GPU acceleration and uses vLLM for high-performance language model inference.
 
 ## Architecture
 
@@ -29,6 +29,8 @@ Detailed documentation is available in the `docs/` directory:
 - Terraform 1.7.0 or later
 - Docker (for local testing, optional)
 - An existing Route53 hosted zone (if DNS records are needed)
+- A HuggingFace token stored in SSM Parameter Store (default path: `/inference/hf_token`)
+- (Optional) GPU-enabled EC2 instance for production use
 
 ## Deployment
 
@@ -77,12 +79,24 @@ Edit `terraform.tfvars` to customize:
 - Admin IPs allowed to access management endpoints
 - Instance type and other EC2 parameters
 
-## Customizing the API
+## Customizing the API and Model
 
-The sample "Hello World" API is located in the `app/` directory. To customize:
+The solution comes with a pre-configured vLLM setup. To customize:
 
-1. Modify `app/server.js` with your inference logic
-2. Run `terraform apply` to rebuild and redeploy
+1. Update `terraform.tfvars` to change the model and instance parameters:
+   ```
+   # Example: Switch to GPU and use a different model
+   use_gpu_instance = true
+   gpu_instance_type = "g4dn.xlarge"
+   model_id = "meta-llama/Llama-2-7b-chat-hf"
+   max_model_len = 4096
+   ```
+
+2. If needed, modify the API proxy in `app/server.js`
+   
+3. Run `terraform apply` to rebuild and redeploy
+
+For detailed configuration options, see the [Customization Guide](./docs/CUSTOMIZATION.md).
 
 ## Outputs
 
@@ -132,6 +146,49 @@ Common issues:
 ## Project Status
 
 This project is actively maintained. See the [Development Roadmap](./docs/DEVELOPMENT_ROADMAP.md) for information about current status, planned features, and technical debt.
+
+## Version Control
+
+### Git Tags
+
+We use semantic versioning for release management. To tag a new version:
+
+```bash
+# List existing tags
+git tag -l
+
+# Create a new tag (locally)
+git tag -a v1.0.0 -m "Initial stable release"
+
+# Push the tag to the remote repository
+git push origin v1.0.0
+
+# Push all tags
+git push origin --tags
+```
+
+To checkout a specific tag:
+
+```bash
+# Create a branch from a tag
+git checkout -b branch-name v1.0.0
+
+# Or view the code at a specific tag without creating a branch
+git checkout v1.0.0
+```
+
+The version number format follows semantic versioning:
+- MAJOR version for incompatible API changes (v1.0.0 → v2.0.0)
+- MINOR version for backward-compatible functionality additions (v1.0.0 → v1.1.0)
+- PATCH version for backward-compatible bug fixes (v1.0.0 → v1.0.1)
+
+### Release Workflow
+
+1. Complete and test your changes
+2. Update documentation to reflect changes
+3. Create a git tag following semantic versioning
+4. Push the tag to the repository
+5. Create a detailed release note in your repository management system
 
 ## License
 
