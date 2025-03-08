@@ -14,5 +14,5 @@ email_address     = "admin@live.ca.obenv.net"
 
 # EC2 instance settings
 instance_type     = "t3.small"
-key_name          = null  # Set to your key name if SSH access is needed
+key_name          = "ob-live-open-inference-oregon"
 app_port          = 8080
