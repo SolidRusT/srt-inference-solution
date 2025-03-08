@@ -22,18 +22,40 @@ The solution includes the following components:
 
 ## Deployment
 
-### Quick Start
+### Step 1: Create the S3 Bucket for Terraform State
+
+Before initializing Terraform, create an S3 bucket to store the Terraform state:
+
+```bash
+aws s3api create-bucket \
+    --bucket ob-lq-live-inference-solution-terraform-state-us-west-2 \
+    --region us-west-2 \
+    --create-bucket-configuration LocationConstraint=us-west-2
+
+# Enable S3 bucket versioning for state recovery
+aws s3api put-bucket-versioning \
+    --bucket ob-lq-live-inference-solution-terraform-state-us-west-2 \
+    --versioning-configuration Status=Enabled
+
+# Enable S3 bucket encryption for security
+aws s3api put-bucket-encryption \
+    --bucket ob-lq-live-inference-solution-terraform-state-us-west-2 \
+    --server-side-encryption-configuration '{"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}'
+```
+
+### Step 2: Quick Start
 
 1. Clone this repository
 2. Update `terraform.tfvars` with your desired configuration
-3. Deploy with Terraform:
+3. Make sure the S3 bucket name in `backend.tf` matches the bucket you created
+4. Deploy with Terraform:
 
 ```bash
 terraform init
 terraform apply
 ```
 
-4. Access your API using the outputs provided by Terraform
+5. Access your API using the outputs provided by Terraform
 
 ### Configuration Options
 
@@ -88,6 +110,11 @@ terraform destroy
 - Check CloudWatch logs for application issues
 - SSH to the instance using the provided connection string
 - Use the AWS SSM Session Manager for secure console access
+- If you encounter Terraform state issues:
+  - Verify the S3 bucket exists and is accessible
+  - Check the bucket name in `backend.tf` matches the created bucket
+  - Ensure you have proper permissions to read/write to the bucket
+  - For state lock issues, you may need to manually release locks in S3 using the AWS console
 
 ## License
 
