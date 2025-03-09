@@ -123,7 +123,10 @@ resource "aws_iam_policy" "ssm_parameter_access" {
           "ssm:GetParameters"
         ]
         Effect   = "Allow"
-        Resource = "arn:aws:ssm:${var.region}:*:parameter${var.hf_token_parameter_name}"
+        Resource = [
+          "arn:aws:ssm:${var.region}:*:parameter${var.hf_token_parameter_name}",
+          "arn:aws:ssm:${var.region}:*:parameter/inference/*"
+        ]
       }
     ]
   })
@@ -166,6 +169,11 @@ locals {
     gpu_memory_utilization  = var.gpu_memory_utilization
     vllm_image_tag          = var.vllm_image_tag
     hf_token_parameter_name = var.hf_token_parameter_name
+    enable_https            = var.enable_https
+    certificate_arn         = var.certificate_arn
+    domain_name             = var.domain_name
+    admin_email             = var.admin_email
+    timestamp               = var.user_data_timestamp
   })
 }
 

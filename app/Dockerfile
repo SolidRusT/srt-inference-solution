@@ -16,9 +16,11 @@ EXPOSE 8080
 
 # Define default environment variables
 ENV PORT=8080
+ENV HTTPS_PORT=443
 ENV VLLM_PORT=8000
 ENV VLLM_HOST=localhost
-ENV MODEL_ID="solidrust/Hermes-3-Llama-3.1-8B-AWQ"
+ENV MODEL_ID=""
+ENV USE_HTTPS="false"
 
 # Run the application
 CMD ["node", "server.js"]

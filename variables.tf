@@ -115,3 +115,15 @@ variable "hf_token_parameter_name" {
   type        = string
   default     = "/inference/hf_token"
 }
+
+variable "enable_https" {
+  description = "Whether to enable HTTPS support with ACM certificates"
+  type        = bool
+  default     = true
+}
+
+variable "certificate_domain" {
+  description = "Domain for the ACM certificate"
+  type        = string
+  default     = ""
+}

@@ -190,18 +190,33 @@ To implement a high-availability setup:
 
 To add HTTPS support:
 
-1. **Create an ACM Certificate Module**
+1. Make sure `enable_https` is set to `true` in `terraform.tfvars`:
 
-   - Create `modules/acm/main.tf`, `variables.tf`, and `outputs.tf`
-   - Configure certificate validation with Route53
+   ```hcl
+   enable_https = true
+   ```
 
-2. **Update Security Groups**
+2. Ensure that `create_route53_records` is set to `true`:
 
-   - Add port 443 ingress rule to the security group
+   ```hcl
+   create_route53_records = true
+   ```
 
-3. **Configure the Application**
-   - Update the application to handle HTTPS
-   - Or implement a reverse proxy like Nginx
+3. Provide a valid email address for Let's Encrypt certificate notifications:
+
+   ```hcl
+   email_address = "your-email@example.com"
+   ```
+
+4. The deployment will automatically:
+   - Create a Let's Encrypt SSL certificate using Certbot
+   - Configure the API to use HTTPS
+   - Set up automatic certificate renewal
+   - Apply security headers for enhanced security
+
+5. To customize the HTTPS configuration, modify the following files:
+   - `modules/ec2/templates/user-data.sh.tpl`: Certificate setup
+   - `app/server.js`: HTTPS server configuration
 
 ### CI/CD Integration
 

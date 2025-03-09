@@ -4,6 +4,24 @@ variable "name" {
   default     = "inference"
 }
 
+variable "user_data_timestamp" {
+  description = "Timestamp to force user-data update"
+  type        = string
+  default     = ""
+}
+
+variable "domain_name" {
+  description = "Domain name for DNS configuration"
+  type        = string
+  default     = ""
+}
+
+variable "admin_email" {
+  description = "Email address for certificate notifications"
+  type        = string
+  default     = "admin@example.com"
+}
+
 variable "vpc_id" {
   description = "ID of the VPC"
   type        = string
@@ -90,6 +108,18 @@ variable "hf_token_parameter_name" {
   description = "Name of the SSM parameter containing the HuggingFace token"
   type        = string
   default     = "/inference/hf_token"
+}
+
+variable "enable_https" {
+  description = "Whether to enable HTTPS"
+  type        = bool
+  default     = false
+}
+
+variable "certificate_arn" {
+  description = "ARN of the ACM certificate"
+  type        = string
+  default     = ""
 }
 
 variable "region" {

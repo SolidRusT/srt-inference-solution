@@ -1,10 +1,25 @@
 const express = require('express');
 const http = require('http');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 const app = express();
 const port = process.env.PORT || 8080;
+const httpsPort = process.env.HTTPS_PORT || 443;
 const vllmPort = process.env.VLLM_PORT || 8000;
 const vllmHost = process.env.VLLM_HOST || 'localhost';
+const useHttps = process.env.USE_HTTPS === 'true';
+
+// Security headers middleware
+app.use((req, res, next) => {
+  // Add security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', "default-src 'self'");
+  next();
+});
 
 // Middleware to parse JSON
 app.use(express.json({ limit: '50mb' }));
@@ -229,7 +244,49 @@ app.post('/api/infer', (req, res) => {
 });
 
 // Start the server
-app.listen(port, () => {
-  console.log(`vLLM Inference API proxy running on port ${port}`);
-  console.log(`Forwarding requests to vLLM at ${vllmHost}:${vllmPort}`);
-});
+if (useHttps) {
+  try {
+    // Check for certificate and key files
+    const privateKey = fs.readFileSync('/etc/ssl/private/server.key', 'utf8');
+    const certificate = fs.readFileSync('/etc/ssl/certs/server.crt', 'utf8');
+    const credentials = { key: privateKey, cert: certificate };
+    
+    // Create HTTPS server
+    const httpsServer = https.createServer(credentials, app);
+    
+    httpsServer.listen(httpsPort, () => {
+      console.log(`vLLM Inference API proxy running on HTTPS port ${httpsPort}`);
+      console.log(`Also listening on HTTP port ${port} for health checks`);
+      console.log(`Forwarding requests to vLLM at ${vllmHost}:${vllmPort}`);
+    });
+    
+    // Also start HTTP server for health checks and redirect
+    http.createServer((req, res) => {
+      // Redirect HTTP to HTTPS except for health check endpoint
+      if (req.url === '/health') {
+        // Handle health check on HTTP
+        app(req, res);
+      } else {
+        res.writeHead(301, { "Location": `https://${req.headers.host}${req.url}` });
+        res.end();
+      }
+    }).listen(port, () => {
+      console.log(`HTTP to HTTPS redirect running on port ${port}`);
+    });
+  } catch (error) {
+    console.error('Failed to start HTTPS server:', error);
+    console.log('Falling back to HTTP only mode');
+    
+    // Fall back to HTTP if HTTPS setup fails
+    app.listen(port, () => {
+      console.log(`vLLM Inference API proxy running on HTTP port ${port}`);
+      console.log(`Forwarding requests to vLLM at ${vllmHost}:${vllmPort}`);
+    });
+  }
+} else {
+  // HTTP only mode
+  app.listen(port, () => {
+    console.log(`vLLM Inference API proxy running on HTTP port ${port}`);
+    console.log(`Forwarding requests to vLLM at ${vllmHost}:${vllmPort}`);
+  });
+}

@@ -42,8 +42,8 @@ The AWS EC2 Inference Solution is currently in a functional MVP state. The solut
 
 ### Enhanced Security
 
-- [ ] Add HTTPS support with ACM certificates
-- [ ] Implement proper security headers
+- [x] Add HTTPS support with ACM certificates
+- [x] Implement proper security headers
 - [ ] Add WAF rules for API protection
 - [ ] Implement more granular IAM permissions
 
@@ -129,20 +129,21 @@ The AWS EC2 Inference Solution is currently in a functional MVP state. The solut
 
 ## Decision Log
 
-| Date       | Decision               | Rationale                        | Alternatives Considered |
-| ---------- | ---------------------- | -------------------------------- | ----------------------- |
-| 2025-03-08 | Use EC2 with Docker    | Simplicity, cost-effectiveness   | ECS, EKS, Lambda        |
-| 2025-03-08 | Ubuntu base image      | Wide support, recent packages    | Amazon Linux, Alpine    |
-| 2025-03-08 | Node.js for sample app | Lightweight, easy deployment     | Python, Java            |
-| 2025-03-08 | Terraform for IaC      | Declarative, multi-cloud support | CloudFormation, CDK     |
-| 2025-03-08 | S3 for state storage   | Built-in locking, versioning     | Terraform Cloud, local  |
+| Date       | Decision                       | Rationale                             | Alternatives Considered |
+| ---------- | ------------------------------ | ------------------------------------- | ----------------------- |
+| 2025-03-08 | Use EC2 with Docker            | Simplicity, cost-effectiveness        | ECS, EKS, Lambda        |
+| 2025-03-08 | Ubuntu base image              | Wide support, recent packages         | Amazon Linux, Alpine    |
+| 2025-03-08 | Node.js for sample app         | Lightweight, easy deployment          | Python, Java            |
+| 2025-03-08 | Terraform for IaC              | Declarative, multi-cloud support      | CloudFormation, CDK     |
+| 2025-03-08 | S3 for state storage           | Built-in locking, versioning          | Terraform Cloud, local  |
+| 2025-03-09 | Let's Encrypt for certificates | Free, automated renewal, widely used  | ACM, self-signed        |
 
 ## Technical Debt Tracking
 
 | Item  | Description                        | Priority | Estimated Effort |
 | ----- | ---------------------------------- | -------- | ---------------- |
 | TD-01 | Single instance deployment (no HA) | High     | 3 days           |
-| TD-02 | HTTP only (no TLS)                 | High     | 1 day            |
+| TD-02 | ~~HTTP only (no TLS)~~             | ~~High~~ | ~~1 day~~        |
 | TD-03 | Basic monitoring only              | Medium   | 2 days           |
 | TD-04 | Manual image build process         | Low      | 2 days           |
 | TD-05 | Limited error handling in scripts  | Medium   | 1 day            |

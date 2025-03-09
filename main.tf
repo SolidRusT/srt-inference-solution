@@ -10,6 +10,7 @@ locals {
   })
 
   instance_name = "inference-${var.environment}"
+  deployment_timestamp = timestamp()
 }
 
 # VPC and networking
@@ -51,6 +52,11 @@ module "ec2" {
   region            = var.region
   allowed_cidr_blocks = concat(["0.0.0.0/0"], var.allowed_admin_ips)
   ecr_repository_url = module.ecr.repository_url
+  enable_https      = var.enable_https && var.create_route53_records
+  certificate_arn   = ""
+  domain_name       = var.domain_name
+  admin_email       = var.email_address
+  user_data_timestamp = local.deployment_timestamp
   tags              = local.tags
 }
 

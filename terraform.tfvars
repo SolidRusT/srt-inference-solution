@@ -1,3 +1,5 @@
+# HTTPS Configuration
+enable_https = true
 # AWS Configuration
 region = "us-west-2"
 
@@ -15,7 +17,7 @@ email_address     = "admin@live.ca.obenv.net"
 # EC2 instance settings
 instance_type     = "t3.small"
 use_gpu_instance  = true
-gpu_instance_type = "g5.2xlarge"
+gpu_instance_type = "g5.2xlarge"    # g5.xlarge is the smallest GPU instance that supports vLLM
 key_name          = "ob-live-open-inference-oregon"
 app_port          = 8080
 
