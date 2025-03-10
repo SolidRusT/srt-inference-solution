@@ -70,6 +70,7 @@ resource "aws_security_group" "inference_instance" {
 # IAM role for EC2 instance
 resource "aws_iam_role" "inference_instance" {
   name = "${var.name}-role"
+  force_detach_policies = true
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

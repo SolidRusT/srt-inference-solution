@@ -83,6 +83,22 @@ output "deployment_environment" {
   value       = var.environment
 }
 
+# Maintenance Commands
+output "maintenance_commands" {
+  description = "Useful commands for maintenance"
+  value = {
+    check_logs         = "ssh ubuntu@${module.ec2.instance_public_ip} 'sudo cat /var/log/user-data.log'"
+    vllm_status        = "ssh ubuntu@${module.ec2.instance_public_ip} 'sudo systemctl status vllm'"
+    app_status         = "ssh ubuntu@${module.ec2.instance_public_ip} 'sudo systemctl status inference-app'"
+    run_diagnostics    = "ssh ubuntu@${module.ec2.instance_public_ip} 'sudo /usr/local/bin/test-vllm.sh'"
+    update_container   = "ssh ubuntu@${module.ec2.instance_public_ip} 'sudo /usr/local/bin/update-inference-app.sh'"
+    nvidia_check       = "ssh ubuntu@${module.ec2.instance_public_ip} 'nvidia-smi'"
+    view_api_logs      = "ssh ubuntu@${module.ec2.instance_public_ip} 'sudo docker logs inference-app'"
+    view_vllm_logs     = "ssh ubuntu@${module.ec2.instance_public_ip} 'sudo docker logs vllm-service'"
+    restart_services   = "ssh ubuntu@${module.ec2.instance_public_ip} 'sudo systemctl restart vllm && sudo systemctl restart inference-app'"
+  }
+}
+
 # Summary
 output "inference_solution_info" {
   description = "Summary of the inference solution deployment"

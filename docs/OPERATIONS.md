@@ -221,6 +221,26 @@ The solution collects standard EC2 metrics in CloudWatch. Key metrics to monitor
 - Disk Space
 - Network Traffic
 
+### Advanced Diagnostics
+
+The solution includes built-in diagnostic tools to help troubleshoot issues:
+
+```bash
+# Run the vLLM diagnostic script
+sudo /usr/local/bin/test-vllm.sh
+
+# Check the installation log
+cat /var/log/user-data.log
+
+# Check logs from the post-reboot setup
+cat /var/log/post-reboot-vllm-test.log
+
+# Test HuggingFace token retrieval
+sudo /usr/local/bin/get-hf-token.sh
+```
+
+When running `terraform apply`, the output includes useful maintenance commands that can be run from your local machine for remote diagnostics.
+
 ## Troubleshooting
 
 ### Testing the API
@@ -392,7 +412,7 @@ sudo reboot
 
 ## Complete Removal
 
-To completely remove all resources:
+This solution has been designed to be fully destroyable with a single command. To completely remove all resources:
 
 ```bash
 terraform destroy
@@ -401,8 +421,11 @@ terraform destroy
 This will:
 
 1. Terminate the EC2 instance
-2. Delete the ECR repository and images
+2. Delete the ECR repository and images (using force_delete)
 3. Remove DNS records
-4. Delete all associated resources
+4. Remove IAM roles and policies (with force_detach_policies)
+5. Delete the security groups, VPC, and associated resources
 
-The S3 bucket for Terraform state must be manually deleted if no longer needed.
+All resources are configured to properly handle dependencies and allow clean deletion, even when containing data or having external associations.
+
+> Note: The S3 bucket for Terraform state must be manually deleted if no longer needed, as it exists outside of this Terraform configuration.

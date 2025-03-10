@@ -2,6 +2,14 @@
 
 This Terraform solution deploys a fully automated LLM inference solution on AWS EC2 using vLLM for OpenAI-compatible API endpoints. The solution supports GPU acceleration and uses vLLM for high-performance language model inference.
 
+## Recent Updates
+
+- **HTTPS Support**: Added support for secure HTTPS endpoints using Let's Encrypt certificates
+- **Enhanced Monitoring**: Added comprehensive diagnostics and health check scripts
+- **Improved Error Handling**: Better token retrieval and service startup logic
+- **Force Delete Support**: Added support for clean terraform destroy operations
+- **Maintenance Commands**: Added output with useful maintenance commands for easier troubleshooting
+
 ## Architecture
 
 The solution includes the following components:

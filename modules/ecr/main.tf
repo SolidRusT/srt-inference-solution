@@ -1,6 +1,7 @@
 resource "aws_ecr_repository" "inference_app" {
   name                 = var.repository_name
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
@@ -11,6 +12,7 @@ resource "aws_ecr_repository" "inference_app" {
 
 # Set repository policy for pulling images
 resource "aws_ecr_repository_policy" "inference_app_policy" {
+  count      = var.instance_role_arn != "" ? 1 : 0
   repository = aws_ecr_repository.inference_app.name
   policy     = jsonencode({
     Version = "2012-10-17",

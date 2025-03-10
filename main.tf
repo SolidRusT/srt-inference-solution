@@ -29,7 +29,6 @@ module "ecr" {
   source = "./modules/ecr"
   repository_name = "inference-app-${var.environment}"
   tags           = local.tags
-  instance_role_arn = module.ec2.instance_role_arn
 }
 
 # EC2 instance for running the inference application
@@ -78,4 +77,28 @@ module "route53" {
   create_example_record = true
 
   depends_on = [module.ec2]
+}
+
+# Set ECR policy for the EC2 instance
+resource "aws_ecr_repository_policy" "inference_app_policy" {
+  repository = module.ecr.repository_name
+  policy     = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Sid    = "AllowPull",
+        Effect = "Allow",
+        Principal = {
+          "AWS": module.ec2.instance_role_arn
+        },
+        Action = [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability"
+        ]
+      }
+    ]
+  })
+
+  depends_on = [module.ecr, module.ec2]
 }
