@@ -9,6 +9,12 @@ variable "create_example_record" {
   default     = true
 }
 
+variable "zone_id" {
+  description = "Route53 zone ID (if known to avoid lookups)"
+  type        = string
+  default     = ""
+}
+
 variable "instance_public_ip" {
   description = "Public IP address of the EC2 instance"
   type        = string

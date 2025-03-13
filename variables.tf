@@ -32,6 +32,12 @@ variable "create_route53_records" {
   default     = true
 }
 
+variable "route53_zone_id" {
+  description = "Route53 zone ID (if known to avoid lookups)"
+  type        = string
+  default     = ""
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for VPC"
   type        = string
@@ -126,4 +132,10 @@ variable "certificate_domain" {
   description = "Domain for the ACM certificate"
   type        = string
   default     = ""
+}
+
+variable "ec2_instance_version" {
+  description = "Instance version - increment to force replacement of EC2 instance"
+  type        = number
+  default     = 1
 }

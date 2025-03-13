@@ -175,6 +175,7 @@ locals {
     domain_name             = var.domain_name
     admin_email             = var.admin_email
     timestamp               = var.user_data_timestamp
+    instance_version        = var.instance_version # Added for version tracking in logs
   })
 }
 
@@ -187,7 +188,20 @@ resource "aws_instance" "inference" {
   subnet_id              = var.subnet_id
   iam_instance_profile   = aws_iam_instance_profile.inference_instance.name
   user_data              = local.user_data
-  user_data_replace_on_change = true
+  # Not replacing EC2 instance on user data change for better idempotency
+  user_data_replace_on_change = false
+  
+  # Tag with version to track the deployment version
+  tags = merge(var.tags, { 
+    Name = var.name, 
+    Version = var.instance_version 
+  })
+
+  # This is a special attribute that forces replacement when instance_version changes
+  lifecycle {
+    create_before_destroy = true
+    replace_triggered_by = [null_resource.instance_version_trigger.id]
+  }
 
   root_block_device {
     volume_size = var.root_volume_size
@@ -200,11 +214,16 @@ resource "aws_instance" "inference" {
     http_tokens   = "required" # IMDSv2
   }
 
-  tags = merge(var.tags, { Name = var.name })
-
   # Connect to session manager instead of direct SSH
   provisioner "local-exec" {
     command = "echo 'Instance ${self.id} has been created. Connect using AWS SSM Session Manager.'"
+  }
+}
+
+# Null resource to trigger instance replacement based on version
+resource "null_resource" "instance_version_trigger" {
+  triggers = {
+    instance_version = var.instance_version
   }
 }
 

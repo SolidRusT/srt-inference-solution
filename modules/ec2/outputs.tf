@@ -27,3 +27,8 @@ output "api_endpoint" {
   description = "Full API endpoint URL"
   value       = "http://${aws_eip.inference.public_ip}:${var.app_port}"
 }
+
+output "instance_version" {
+  description = "The deployed instance version"
+  value       = var.instance_version
+}

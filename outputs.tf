@@ -30,6 +30,11 @@ output "instance_id" {
   value       = module.ec2.instance_id
 }
 
+output "instance_version" {
+  description = "Current deployment version of the EC2 instance"
+  value       = var.ec2_instance_version
+}
+
 output "instance_public_ip" {
   description = "Public IP address of the inference EC2 instance"
   value       = module.ec2.instance_public_ip
@@ -109,6 +114,7 @@ output "inference_solution_info" {
     ssh_remove_host    = "ssh-keygen -f ~/.ssh/known_hosts -R ${module.ec2.instance_public_ip}"
     ecr_repository     = module.ecr.repository_url
     environment        = var.environment
+    instance_version   = var.ec2_instance_version
     deployed_timestamp = timestamp()
   }
 }

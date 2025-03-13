@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Script generated at ${timestamp}
+# Instance version: ${instance_version}
 
 # Log everything to a file for debugging
 set -x  # Enable command echo for better debugging

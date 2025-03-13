@@ -10,7 +10,8 @@ locals {
   })
 
   instance_name = "inference-${var.environment}"
-  deployment_timestamp = timestamp()
+  # Fixed timestamp to prevent unnecessary EC2 recreation
+  deployment_timestamp = "2025-03-12"
 }
 
 # VPC and networking
@@ -56,6 +57,7 @@ module "ec2" {
   domain_name       = var.domain_name
   admin_email       = var.email_address
   user_data_timestamp = local.deployment_timestamp
+  instance_version  = var.ec2_instance_version  # Pass through the instance version
   tags              = local.tags
 }
 
@@ -75,6 +77,8 @@ module "route53" {
   domain_name         = var.domain_name
   instance_public_ip  = module.ec2.instance_public_ip
   create_example_record = true
+  # Use a known zone_id if available to avoid replacement
+  zone_id             = var.route53_zone_id
 
   depends_on = [module.ec2]
 }

@@ -137,3 +137,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "instance_version" {
+  description = "Instance version - increment to force replacement"
+  type        = number
+  default     = 1
+}
