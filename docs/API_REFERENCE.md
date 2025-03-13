@@ -2,14 +2,14 @@
 
 ## Overview
 
-This document provides details about the REST API endpoints exposed by the inference application. The API is built using Node.js and Express, acting as a proxy to the vLLM OpenAI-compatible inference service running on the same machine.
+This document provides details about the REST API endpoints exposed by the inference application. The API is built using Node.js and Express, acting as a proxy to the vLLM OpenAI-compatible inference service running on the same machine. The API proxy provides secure access, SSL termination, and consistent error handling.
 
 ## Base URLs
 
 - **Development**: `http://localhost:8080`
 - **Production**:
   - IP-based: `http://<ec2-instance-ip>:8080`
-  - Domain-based: `https://infer.<your-domain>:8080` (when DNS records are enabled)
+  - Domain-based: `https://infer.<your-domain>` (when DNS records and HTTPS are enabled)
 
 ## Authentication
 
@@ -33,13 +33,16 @@ GET /health
 
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "message": "API and vLLM service are healthy",
+  "version": "1.1.0"
 }
 ```
 
 #### Status Codes
 
 - `200 OK`: Service is healthy
+- `503 Service Unavailable`: vLLM service is not available
 
 ### Root Endpoint
 
@@ -53,9 +56,10 @@ GET /
 
 ```json
 {
-  "message": "Hello from the Inference API!",
-  "timestamp": "2025-03-08T12:34:56.789Z",
-  "version": "1.0.0"
+  "message": "vLLM Inference API",
+  "timestamp": "2025-03-12T12:34:56.789Z",
+  "version": "1.1.0",
+  "modelInfo": "solidrust/Hermes-3-Llama-3.1-8B-AWQ"
 }
 ```
 
@@ -148,19 +152,22 @@ POST /v1/chat/completions
 - `500 Internal Server Error`: Processing error
 - `503 Service Unavailable`: vLLM service unavailable
 
-### Legacy Inference Endpoint
+### Text Completion Endpoint
 
-Submit data for inference processing using the legacy format. This endpoint is maintained for backward compatibility.
+Submit text prompts for completion in OpenAI format.
 
 ```http
-POST /api/infer
+POST /v1/completions
 ```
 
 #### Request Body
 
 ```json
 {
-  "data": "Your input data here"
+  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "prompt": "Write a short paragraph about AWS EC2",
+  "max_tokens": 256,
+  "temperature": 0.7
 }
 ```
 
@@ -168,21 +175,200 @@ POST /api/infer
 
 ```json
 {
-  "input": {
-    "data": "Your input data here"
-  },
-  "result": "This is the inference result based on your input data...",
-  "timestamp": "2025-03-08T12:34:56.789Z",
-  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ"
+  "id": "cmpl-abc123def456",
+  "object": "text.completion",
+  "created": 1710325001,
+  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "choices": [
+    {
+      "text": "AWS EC2 (Elastic Compute Cloud) is Amazon's flagship cloud computing service that allows users to rent virtual computers...",
+      "index": 0,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 8,
+    "completion_tokens": 54,
+    "total_tokens": 62
+  }
 }
 ```
 
-#### Status Codes
+### Tokenize Endpoint
 
-- `200 OK`: Inference successful
-- `400 Bad Request`: Invalid input data
-- `500 Internal Server Error`: Processing error
-- `503 Service Unavailable`: vLLM service unavailable
+Convert text to tokens according to the model's tokenizer.
+
+```http
+POST /tokenize
+```
+
+#### Request Body (for chat format)
+
+```json
+{
+  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "messages": [
+    { "role": "user", "content": "Hello, how are you?" }
+  ]
+}
+```
+
+#### Request Body (for completion format)
+
+```json
+{
+  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "prompt": "Hello, how are you?"
+}
+```
+
+#### Response
+
+```json
+{
+  "tokens": [1, 23, 5, 7890, 12, 35, 23, 789]
+}
+```
+
+### Detokenize Endpoint
+
+Convert token IDs back to text.
+
+```http
+POST /detokenize
+```
+
+#### Request Body
+
+```json
+{
+  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "tokens": [1, 23, 5, 7890, 12, 35, 23, 789]
+}
+```
+
+#### Response
+
+```json
+{
+  "text": "Hello, how are you?"
+}
+```
+
+### Version Endpoint
+
+Get the version information of the vLLM server and proxy.
+
+```http
+GET /version
+```
+
+#### Response
+
+```json
+{
+  "version": "0.2.5",
+  "proxy_version": "1.1.0"
+}
+```
+
+### Embeddings Endpoint
+
+Generate embeddings for input text.
+
+```http
+POST /v1/embeddings
+```
+
+#### Request Body
+
+```json
+{
+  "model": "solidrust/embedding-model",
+  "input": "Text to embed",
+  "encoding_format": "float"
+}
+```
+
+#### Response
+
+```json
+{
+  "object": "embedding",
+  "embedding": [0.1, 0.2, -0.3, 0.4, ...],
+  "model": "solidrust/embedding-model"
+}
+```
+
+### Rerank Endpoint
+
+Rerank a list of documents according to their relevance to a query.
+
+```http
+POST /rerank
+```
+
+#### Request Body
+
+```json
+{
+  "model": "solidrust/rerank-model",
+  "query": "How does AWS EC2 pricing work?",
+  "documents": [
+    "EC2 instances are billed by the hour with different rates for different instance types.",
+    "AWS provides different pricing models including On-Demand, Reserved, and Spot instances.",
+    "Cloud computing enables organizations to be more agile and reduce hardware costs."
+  ],
+  "top_n": 2
+}
+```
+
+#### Response
+
+```json
+{
+  "model": "solidrust/rerank-model",
+  "results": [
+    {
+      "document": "AWS provides different pricing models including On-Demand, Reserved, and Spot instances.",
+      "index": 1,
+      "relevance_score": 0.89
+    },
+    {
+      "document": "EC2 instances are billed by the hour with different rates for different instance types.",
+      "index": 0,
+      "relevance_score": 0.76
+    }
+  ]
+}
+```
+
+### Score Endpoint
+
+Calculate the relevance score between two pieces of text.
+
+```http
+POST /score
+```
+
+#### Request Body
+
+```json
+{
+  "model": "solidrust/score-model",
+  "text_1": "How does AWS EC2 pricing work?",
+  "text_2": "EC2 instances are billed by the hour with different rates for different instance types."
+}
+```
+
+#### Response
+
+```json
+{
+  "model": "solidrust/score-model",
+  "score": 0.76
+}
+```
 
 ## Error Handling
 
@@ -190,10 +376,9 @@ All error responses follow this format:
 
 ```json
 {
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable error message"
-  }
+  "error": "Human-readable error message",
+  "details": "Additional error details",
+  "path": "/endpoint/path"
 }
 ```
 
@@ -207,7 +392,7 @@ Currently, the API does not implement rate limiting. Future versions will includ
 
 ## Versioning
 
-The API follows semantic versioning (MAJOR.MINOR.PATCH). The current version can be found in the response from the root endpoint.
+The API follows semantic versioning (MAJOR.MINOR.PATCH). The current version can be found in the response from the root endpoint or the `/health` endpoint.
 
 ## Development and Testing
 
@@ -248,7 +433,7 @@ To build and run the API using Docker:
 2. Run the container:
 
    ```bash
-   docker run -p 8080:8080 inference-app
+   docker run -p 8080:8080 -e VLLM_HOST=host.docker.internal inference-app
    ```
 
 3. The server will be available at `http://localhost:8080`
@@ -269,13 +454,25 @@ Root endpoint:
 curl http://localhost:8080/
 ```
 
-Inference endpoint:
+Models endpoint:
+
+```bash
+curl http://localhost:8080/v1/models
+```
+
+Chat completions:
 
 ```bash
 curl -X POST \
-  http://localhost:8080/api/infer \
+  http://localhost:8080/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"data": "Test inference data"}'
+  -d '{
+    "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+    "messages": [
+      {"role": "user", "content": "Explain what AWS EC2 is in one paragraph."}
+    ],
+    "max_tokens": 100
+  }'
 ```
 
 ## Future Enhancements
@@ -290,7 +487,8 @@ The API will be enhanced with the following features in future releases:
 
 2. **Enhanced Inference Capabilities**:
 
-   - Support for multiple model types
+   - Support for audio and vision models
+   - Function calling support
    - Batched inference requests
    - Asynchronous inference processing
 

@@ -9,6 +9,7 @@ const httpsPort = process.env.HTTPS_PORT || 443;
 const vllmPort = process.env.VLLM_PORT || 8000;
 const vllmHost = process.env.VLLM_HOST || 'localhost';
 const useHttps = process.env.USE_HTTPS === 'true';
+const appVersion = '1.1.0';
 
 // Security headers middleware
 app.use((req, res, next) => {
@@ -25,6 +26,108 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Utility function for proxying requests to vLLM
+function proxyToVLLM(path, req, res, transformResponse = null) {
+  try {
+    // Determine if this is a GET or POST request
+    const isGet = !req.body || Object.keys(req.body).length === 0;
+    const method = isGet ? 'GET' : 'POST';
+    
+    // Set up the options for the request
+    const options = {
+      hostname: vllmHost,
+      port: vllmPort,
+      path: path,
+      method: method,
+      headers: {
+        'Accept': 'application/json'
+      }
+    };
+
+    let postData = null;
+    if (!isGet) {
+      postData = JSON.stringify(req.body);
+      options.headers['Content-Type'] = 'application/json';
+      options.headers['Content-Length'] = Buffer.byteLength(postData);
+    }
+
+    // Handle streaming responses
+    const isStreaming = !isGet && req.body && req.body.stream === true;
+
+    // Create the request to vLLM
+    const vllmReq = http.request(options, (vllmRes) => {
+      let data = '';
+      
+      // Set headers from vLLM response
+      Object.keys(vllmRes.headers).forEach(key => {
+        res.setHeader(key, vllmRes.headers[key]);
+      });
+      
+      vllmRes.on('data', (chunk) => {
+        // For streaming responses, send each chunk immediately
+        if (isStreaming) {
+          res.write(chunk);
+        } else {
+          data += chunk;
+        }
+      });
+      
+      vllmRes.on('end', () => {
+        if (!isStreaming) {
+          try {
+            if (data) {
+              const responseData = JSON.parse(data);
+              if (transformResponse) {
+                // Apply custom transformation if provided
+                const transformedData = transformResponse(responseData);
+                res.status(vllmRes.statusCode).json(transformedData);
+              } else {
+                res.status(vllmRes.statusCode).json(responseData);
+              }
+            } else {
+              res.status(vllmRes.statusCode).end();
+            }
+          } catch (error) {
+            console.error(`Error parsing vLLM response: ${error}`);
+            res.status(500).json({ 
+              error: 'Failed to parse vLLM response',
+              details: error.message
+            });
+          }
+        } else {
+          res.end();
+        }
+      });
+    });
+
+    vllmReq.on('error', (error) => {
+      console.error(`Error calling vLLM service at ${path}: ${error}`);
+      res.status(503).json({ 
+        error: 'vLLM service unavailable', 
+        details: error.message,
+        path: path
+      });
+    });
+
+    vllmReq.on('timeout', () => {
+      vllmReq.destroy();
+      res.status(504).json({ 
+        error: 'vLLM service timeout', 
+        path: path
+      });
+    });
+
+    if (postData) {
+      vllmReq.write(postData);
+    }
+    
+    vllmReq.end();
+  } catch (error) {
+    console.error(`Error in proxy to vLLM: ${error}`);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+}
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   // Check if vLLM is running by making a request to its health endpoint
@@ -38,9 +141,17 @@ app.get('/health', (req, res) => {
 
   const vllmReq = http.request(options, (vllmRes) => {
     if (vllmRes.statusCode === 200) {
-      res.status(200).json({ status: 'ok', message: 'API and vLLM service are healthy' });
+      res.status(200).json({ 
+        status: 'ok', 
+        message: 'API and vLLM service are healthy',
+        version: appVersion
+      });
     } else {
-      res.status(503).json({ status: 'error', message: 'vLLM service is not healthy' });
+      res.status(503).json({ 
+        status: 'error', 
+        message: 'vLLM service is not healthy',
+        version: appVersion
+      });
     }
   });
 
@@ -49,7 +160,8 @@ app.get('/health', (req, res) => {
     res.status(503).json({ 
       status: 'error', 
       message: 'vLLM service unavailable',
-      error: e.message
+      error: e.message,
+      version: appVersion
     });
   });
 
@@ -57,7 +169,8 @@ app.get('/health', (req, res) => {
     vllmReq.destroy();
     res.status(503).json({ 
       status: 'error', 
-      message: 'vLLM service timeout'
+      message: 'vLLM service timeout',
+      version: appVersion
     });
   });
 
@@ -69,178 +182,80 @@ app.get('/', (req, res) => {
   res.status(200).json({ 
     message: 'vLLM Inference API',
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
+    version: appVersion,
     modelInfo: process.env.MODEL_ID || 'Not specified'
   });
 });
 
-// vLLM models endpoint - pass through to vLLM
-app.get('/v1/models', async (req, res) => {
-  try {
-    const options = {
-      hostname: vllmHost,
-      port: vllmPort,
-      path: '/v1/models',
-      method: 'GET'
-    };
-
-    const vllmReq = http.request(options, (vllmRes) => {
-      let data = '';
-      
-      vllmRes.on('data', (chunk) => {
-        data += chunk;
-      });
-      
-      vllmRes.on('end', () => {
-        try {
-          const responseData = JSON.parse(data);
-          res.status(vllmRes.statusCode).json(responseData);
-        } catch (error) {
-          console.error('Error parsing vLLM response:', error);
-          res.status(500).json({ error: 'Failed to parse vLLM response' });
-        }
-      });
-    });
-
-    vllmReq.on('error', (error) => {
-      console.error('Error calling vLLM service:', error);
-      res.status(503).json({ error: 'vLLM service unavailable', details: error.message });
-    });
-
-    vllmReq.end();
-  } catch (error) {
-    console.error('Error in models endpoint:', error);
-    res.status(500).json({ error: 'Internal server error', details: error.message });
-  }
+// vLLM models endpoint
+app.get('/v1/models', (req, res) => {
+  proxyToVLLM('/v1/models', req, res);
 });
 
-// Inference endpoint - proxy to vLLM
+// Chat completions endpoint (OpenAI compatible)
 app.post('/v1/chat/completions', (req, res) => {
-  try {
-    const postData = JSON.stringify(req.body);
-    
-    const options = {
-      hostname: vllmHost,
-      port: vllmPort,
-      path: '/v1/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    const vllmReq = http.request(options, (vllmRes) => {
-      let data = '';
-      
-      // Set headers from vLLM response
-      Object.keys(vllmRes.headers).forEach(key => {
-        res.setHeader(key, vllmRes.headers[key]);
-      });
-      
-      vllmRes.on('data', (chunk) => {
-        data += chunk;
-        // For streaming responses, send each chunk immediately
-        if (req.body.stream) {
-          res.write(chunk);
-        }
-      });
-      
-      vllmRes.on('end', () => {
-        if (!req.body.stream) {
-          try {
-            const responseData = JSON.parse(data);
-            res.status(vllmRes.statusCode).json(responseData);
-          } catch (error) {
-            console.error('Error parsing vLLM response:', error);
-            res.status(500).json({ error: 'Failed to parse vLLM response' });
-          }
-        } else {
-          res.end();
-        }
-      });
-    });
-
-    vllmReq.on('error', (error) => {
-      console.error('Error calling vLLM service:', error);
-      res.status(503).json({ error: 'vLLM service unavailable', details: error.message });
-    });
-
-    vllmReq.write(postData);
-    vllmReq.end();
-  } catch (error) {
-    console.error('Error in inference endpoint:', error);
-    res.status(500).json({ error: 'Internal server error', details: error.message });
-  }
+  proxyToVLLM('/v1/chat/completions', req, res);
 });
 
-// Compatibility with old API route
-app.post('/api/infer', (req, res) => {
-  // Transform the request to match OpenAI format
-  const transformedBody = {
-    model: process.env.MODEL_ID || "default",
-    messages: [
-      {
-        role: "user",
-        content: req.body.data || "Hello, world!"
-      }
-    ],
-    max_tokens: parseInt(process.env.MAX_TOKENS || "1024", 10)
-  };
+// Text completions endpoint (OpenAI compatible)
+app.post('/v1/completions', (req, res) => {
+  proxyToVLLM('/v1/completions', req, res);
+});
 
-  // Forward to vLLM
-  const postData = JSON.stringify(transformedBody);
-  
-  const options = {
-    hostname: vllmHost,
-    port: vllmPort,
-    path: '/v1/chat/completions',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(postData)
-    }
-  };
+// Tokenize endpoint
+app.post('/tokenize', (req, res) => {
+  proxyToVLLM('/tokenize', req, res);
+});
 
-  const vllmReq = http.request(options, (vllmRes) => {
-    let data = '';
-    
-    vllmRes.on('data', (chunk) => {
-      data += chunk;
-    });
-    
-    vllmRes.on('end', () => {
-      try {
-        const vllmResponse = JSON.parse(data);
-        
-        // Extract the model's response and format for compatibility
-        const responseText = vllmResponse.choices && 
-                            vllmResponse.choices[0] && 
-                            vllmResponse.choices[0].message && 
-                            vllmResponse.choices[0].message.content || 
-                            "No response generated";
-        
-        // Return in the old format for backward compatibility
-        res.status(200).json({
-          input: req.body,
-          result: responseText,
-          timestamp: new Date().toISOString(),
-          model: vllmResponse.model || process.env.MODEL_ID || "unknown"
-        });
-      } catch (error) {
-        console.error('Error parsing vLLM response:', error);
-        res.status(500).json({ error: 'Failed to parse vLLM response' });
-      }
-    });
+// Detokenize endpoint
+app.post('/detokenize', (req, res) => {
+  proxyToVLLM('/detokenize', req, res);
+});
+
+// Version endpoint
+app.get('/version', (req, res) => {
+  proxyToVLLM('/version', req, res, (responseData) => {
+    // Add proxy version to response
+    return {
+      ...responseData,
+      proxy_version: appVersion
+    };
   });
+});
 
-  vllmReq.on('error', (error) => {
-    console.error('Error calling vLLM service:', error);
-    res.status(503).json({ error: 'vLLM service unavailable', details: error.message });
-  });
+// Embeddings endpoint (OpenAI compatible)
+app.post('/v1/embeddings', (req, res) => {
+  proxyToVLLM('/v1/embeddings', req, res);
+});
 
-  vllmReq.write(postData);
-  vllmReq.end();
+// Rerank endpoint
+app.post('/rerank', (req, res) => {
+  proxyToVLLM('/rerank', req, res);
+});
+
+// Rerank v1 endpoint
+app.post('/v1/rerank', (req, res) => {
+  proxyToVLLM('/v1/rerank', req, res);
+});
+
+// Rerank v2 endpoint
+app.post('/v2/rerank', (req, res) => {
+  proxyToVLLM('/v2/rerank', req, res);
+});
+
+// Score endpoint
+app.post('/score', (req, res) => {
+  proxyToVLLM('/score', req, res);
+});
+
+// Score v1 endpoint
+app.post('/v1/score', (req, res) => {
+  proxyToVLLM('/v1/score', req, res);
+});
+
+// SageMaker compatible endpoint
+app.post('/invocations', (req, res) => {
+  proxyToVLLM('/invocations', req, res);
 });
 
 // Start the server
@@ -255,7 +270,7 @@ if (useHttps) {
     const httpsServer = https.createServer(credentials, app);
     
     httpsServer.listen(httpsPort, () => {
-      console.log(`vLLM Inference API proxy running on HTTPS port ${httpsPort}`);
+      console.log(`vLLM Inference API proxy v${appVersion} running on HTTPS port ${httpsPort}`);
       console.log(`Also listening on HTTP port ${port} for health checks`);
       console.log(`Forwarding requests to vLLM at ${vllmHost}:${vllmPort}`);
     });
@@ -279,14 +294,14 @@ if (useHttps) {
     
     // Fall back to HTTP if HTTPS setup fails
     app.listen(port, () => {
-      console.log(`vLLM Inference API proxy running on HTTP port ${port}`);
+      console.log(`vLLM Inference API proxy v${appVersion} running on HTTP port ${port}`);
       console.log(`Forwarding requests to vLLM at ${vllmHost}:${vllmPort}`);
     });
   }
 } else {
   // HTTP only mode
   app.listen(port, () => {
-    console.log(`vLLM Inference API proxy running on HTTP port ${port}`);
+    console.log(`vLLM Inference API proxy v${appVersion} running on HTTP port ${port}`);
     console.log(`Forwarding requests to vLLM at ${vllmHost}:${vllmPort}`);
   });
 }
