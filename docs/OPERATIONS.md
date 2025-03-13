@@ -131,13 +131,38 @@ Verify that the application is running by accessing the API endpoint URL.
 
 ## Routine Operations
 
-### Updating the Application
+### Deployment and Updates
 
-To deploy a new version of the application:
+There are two types of updates you can perform:
+
+#### 1. Docker Image Updates (No Instance Replacement)
+
+For changes to the application code only:
 
 1. Make changes to the application code in the `app/` directory
-2. Run `terraform apply` to trigger a rebuild and redeploy
-3. The EC2 instance will automatically pull the new image
+2. Run `terraform apply` to trigger a rebuild and push of the Docker image
+3. The EC2 instance will automatically pull the new image via cron job
+
+#### 2. Full Infrastructure Updates (With Instance Replacement)
+
+For more significant changes that require a fresh EC2 instance:
+
+1. Edit `terraform.tfvars` and increment the `ec2_instance_version` value:
+
+```hcl
+# Change this from the current value (e.g., from 1 to 2)
+ec2_instance_version = 2
+```
+
+2. Run `terraform apply`
+
+3. Terraform will:
+   - Create a new EC2 instance with the updated configuration
+   - Wait for the new instance to be ready (thanks to create_before_destroy)
+   - Move the Elastic IP to the new instance
+   - Terminate the old instance
+
+This controlled replacement provides zero-downtime deployments while maintaining the same public IP address.
 
 ### Connecting to the EC2 Instance
 
@@ -429,3 +454,32 @@ This will:
 All resources are configured to properly handle dependencies and allow clean deletion, even when containing data or having external associations.
 
 > Note: The S3 bucket for Terraform state must be manually deleted if no longer needed, as it exists outside of this Terraform configuration.
+
+## Infrastructure Design Principles
+
+### Idempotency
+
+The solution is designed to be idempotent, meaning that running `terraform plan` or `terraform apply` multiple times without changing any inputs will result in no proposed changes. This is achieved through several mechanisms:
+
+1. **Fixed Timestamps**: Rather than using dynamic timestamps that change with each run, the solution uses fixed timestamp values to avoid unnecessary resource recreation.
+
+2. **Stable Resource References**: The solution uses explicit zone_id values and lifecycle configurations to maintain stability across runs.
+
+3. **User Data Handling**: EC2 instance user_data changes won't trigger instance replacement unless you explicitly request it using the versioning mechanism.
+
+### Versioning
+
+The `ec2_instance_version` variable provides a controlled way to trigger EC2 instance replacements:
+
+- It's stored in `terraform.tfvars` for easy editing
+- The EC2 instance is tagged with this version for tracking
+- Version information is included in logs for easier debugging
+- Outputs include version information for reference
+
+### Stability
+
+The solution maintains stable endpoints and IPs through:
+
+1. **Elastic IP**: The same public IP is preserved across instance replacements
+2. **Create Before Destroy**: New instances are fully provisioned before old ones are terminated
+3. **Route53 Records**: DNS records are updated automatically to point to the new instance

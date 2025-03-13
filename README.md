@@ -4,6 +4,8 @@ This Terraform solution deploys a fully automated LLM inference solution on AWS 
 
 ## Recent Updates
 
+- **Controlled Deployment Process**: Added version-based EC2 instance replacement mechanism for zero-downtime deployments
+- **Idempotent Infrastructure**: Fixed multiple idempotency issues to ensure consistent Terraform plans
 - **HTTPS Support**: Added support for secure HTTPS endpoints using Let's Encrypt certificates
 - **Enhanced Monitoring**: Added comprehensive diagnostics and health check scripts
 - **Improved Error Handling**: Better token retrieval and service startup logic
@@ -20,6 +22,25 @@ The solution includes the following components:
 - **Route53 DNS**: Optional DNS record configuration for easy access
 - **IAM Roles**: Properly scoped permissions for the EC2 instance
 - **Security Groups**: Configured for secure access to the application
+
+## Design Principles
+
+### Idempotency
+
+The infrastructure is designed to be fully idempotent, ensuring that repeated `terraform apply` operations without changed inputs result in no modifications. Key features:
+
+- Fixed timestamps for user_data and other time-sensitive values
+- Explicit resource references to avoid lookup changes
+- Lifecycle configurations to stabilize resource dependencies
+
+### Controlled Deployment
+
+The solution uses a version-based mechanism for controlled infrastructure updates:
+
+- EC2 instances are versioned via the `ec2_instance_version` variable
+- Replacements create new instances before destroying old ones (create_before_destroy)
+- Elastic IPs ensure stable endpoints during replacements
+- Outputs track version information for monitoring
 
 ## Documentation
 
@@ -119,9 +140,30 @@ After deployment, Terraform provides detailed outputs including:
 
 ### Updating the API
 
+#### Method 1: Docker Image Update (No Instance Replacement)
+
 1. Modify the application code in the `app/` directory
-2. Run `terraform apply` to rebuild and redeploy
-3. The EC2 instance will automatically pull the latest image
+2. Run `terraform apply` to rebuild and push the Docker image
+3. The EC2 instance will automatically pull the latest image via cron job
+
+#### Method 2: Full Infrastructure Deployment (With Instance Replacement)
+
+1. Edit `terraform.tfvars` and increment the `ec2_instance_version` value:
+
+```hcl
+# Change this from the current value (e.g., from 1 to 2)
+ec2_instance_version = 2
+```
+
+2. Run `terraform apply`
+
+3. Terraform will:
+   - Create a new EC2 instance with the updated configuration
+   - Wait for the new instance to be ready
+   - Move the Elastic IP to the new instance
+   - Terminate the old instance
+   
+This approach enables zero-downtime deployments while maintaining the same public IP address.
 
 ### Cleaning Up
 

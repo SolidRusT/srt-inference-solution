@@ -14,6 +14,23 @@ This directory contains comprehensive documentation for the AWS EC2 Inference So
 - [API Reference](./API_REFERENCE.md): Details of the API endpoints provided by the inference application
 - [Customization Guide](./CUSTOMIZATION.md): Instructions for customizing the solution for specific requirements
 
+## Key Features
+
+### Idempotent Infrastructure
+
+The solution is designed to be idempotent, ensuring that applying the same configuration multiple times results in the same state. This provides consistency and predictability in deployments.
+
+### Controlled Deployment Process
+
+A version-based deployment mechanism allows for controlled EC2 instance replacements:
+
+1. Update the `ec2_instance_version` in terraform.tfvars
+2. Run `terraform apply`
+3. New instance is created before old one is destroyed (zero-downtime)
+4. Elastic IP is automatically reassigned to the new instance
+
+This approach provides the foundation for a Blue/Green deployment strategy while maintaining simplicity.
+
 ## Quick Start
 
 For a quick start, refer to the [Operations Guide](./OPERATIONS.md) which contains step-by-step instructions for deploying the solution.

@@ -14,6 +14,8 @@ The AWS EC2 Inference Solution is currently in a functional MVP state. The solut
 - [x] IAM roles with least privilege
 - [x] ECR repository for Docker images
 - [x] Route53 DNS configuration
+- [x] Idempotent infrastructure design
+- [x] Controlled deployment mechanism with versioning
 
 ### Application Components
 
@@ -59,8 +61,10 @@ The AWS EC2 Inference Solution is currently in a functional MVP state. The solut
 ### Advanced Features
 
 - [ ] CI/CD pipeline integration
-- [ ] Blue/Green deployment strategy
-- [ ] Custom domain and SSL management
+- [x] Basic controlled deployment with version-based replacement (foundation for Blue/Green)
+- [ ] Full Blue/Green deployment with traffic switching
+- [x] Custom domain management
+- [x] SSL management with Let's Encrypt
 - [ ] Secrets management with AWS Secrets Manager
 
 ### Performance Optimization
@@ -137,13 +141,16 @@ The AWS EC2 Inference Solution is currently in a functional MVP state. The solut
 | 2025-03-08 | Terraform for IaC              | Declarative, multi-cloud support      | CloudFormation, CDK     |
 | 2025-03-08 | S3 for state storage           | Built-in locking, versioning          | Terraform Cloud, local  |
 | 2025-03-09 | Let's Encrypt for certificates | Free, automated renewal, widely used  | ACM, self-signed        |
+| 2025-03-12 | Fixed EC2 instance versioning  | Controlled deployments and idempotency| Blue/Green, Canary      |
 
 ## Technical Debt Tracking
 
-| Item  | Description                        | Priority | Estimated Effort |
-| ----- | ---------------------------------- | -------- | ---------------- |
-| TD-01 | Single instance deployment (no HA) | High     | 3 days           |
-| TD-02 | ~~HTTP only (no TLS)~~             | ~~High~~ | ~~1 day~~        |
-| TD-03 | Basic monitoring only              | Medium   | 2 days           |
-| TD-04 | Manual image build process         | Low      | 2 days           |
-| TD-05 | Limited error handling in scripts  | Medium   | 1 day            |
+| Item  | Description                        | Priority | Estimated Effort | Status      |
+| ----- | ---------------------------------- | -------- | ---------------- | ----------- |
+| TD-01 | Single instance deployment (no HA) | High     | 3 days           | Pending     |
+| TD-02 | ~~HTTP only (no TLS)~~             | ~~High~~ | ~~1 day~~        | Completed   |
+| TD-03 | Basic monitoring only              | Medium   | 2 days           | Pending     |
+| TD-04 | Manual image build process         | Low      | 2 days           | Pending     |
+| TD-05 | Limited error handling in scripts  | Medium   | 1 day            | Pending     |
+| TD-06 | ~~Non-idempotent infrastructure~~  | ~~High~~ | ~~1 day~~        | Completed   |
+| TD-07 | ~~No controlled deployment mechanism~~ | ~~High~~ | ~~1 day~~     | Completed   |
