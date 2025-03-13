@@ -13,6 +13,29 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+# IAM policy for S3 scripts access
+resource "aws_iam_policy" "s3_scripts_access" {
+  name        = "${var.name}-s3-scripts-access"
+  description = "Policy for S3 scripts access"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket"
+        ]
+        Effect   = "Allow"
+        Resource = [
+          "arn:aws:s3:::${var.scripts_bucket}",
+          "arn:aws:s3:::${var.scripts_bucket}/*"
+        ]
+      }
+    ]
+  })
+}
+
 # Security group for EC2 instance
 resource "aws_security_group" "inference_instance" {
   name        = "${var.name}-sg"
@@ -25,7 +48,16 @@ resource "aws_security_group" "inference_instance" {
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = var.allowed_cidr_blocks
-    description = "HTTP"
+    description = "HTTP to API proxy"
+  }
+
+  # Allow HTTP without API proxy
+  ingress {
+    from_port   = var.vllm_port
+    to_port     = var.vllm_port
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_cidr_blocks
+    description = "HTTP to vLLM"
   }
 
   # Allow HTTPS
@@ -34,7 +66,7 @@ resource "aws_security_group" "inference_instance" {
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = var.allowed_cidr_blocks
-    description = "HTTPS"
+    description = "HTTPS to API proxy"
   }
 
   # Allow SSH
@@ -43,7 +75,7 @@ resource "aws_security_group" "inference_instance" {
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = var.allowed_cidr_blocks
-    description = "SSH"
+    description = "SSH to instance"
   }
 
   # Allow API port
@@ -52,7 +84,7 @@ resource "aws_security_group" "inference_instance" {
     to_port     = var.app_port
     protocol    = "tcp"
     cidr_blocks = var.allowed_cidr_blocks
-    description = "API port"
+    description = "API proxy port"
   }
 
   # Allow all outbound traffic
@@ -133,10 +165,16 @@ resource "aws_iam_policy" "ssm_parameter_access" {
   })
 }
 
-# Attach policy to role
+# Attach ECR access policy to role
 resource "aws_iam_role_policy_attachment" "ecr_access_attach" {
   role       = aws_iam_role.inference_instance.name
   policy_arn = aws_iam_policy.ecr_access.arn
+}
+
+# Attach S3 scripts access policy
+resource "aws_iam_role_policy_attachment" "s3_scripts_access_attach" {
+  role       = aws_iam_role.inference_instance.name
+  policy_arn = aws_iam_policy.s3_scripts_access.arn
 }
 
 # Attach SSM parameter access policy
@@ -157,28 +195,13 @@ resource "aws_iam_instance_profile" "inference_instance" {
   role = aws_iam_role.inference_instance.name
 }
 
-# Create user-data content
+# Create bootstrap script for user data
 locals {
-  user_data = templatefile("${path.module}/templates/user-data.sh.tpl", {
-    app_port                = var.app_port
-    vllm_port               = var.vllm_port
-    aws_region              = var.region
-    ecr_repository_url      = var.ecr_repository_url
-    use_gpu                 = var.use_gpu
-    model_id                = var.model_id
-    max_model_len           = var.max_model_len
-    gpu_memory_utilization  = var.gpu_memory_utilization
-    vllm_image_tag          = var.vllm_image_tag
-    hf_token_parameter_name = var.hf_token_parameter_name
-    enable_https            = var.enable_https
-    certificate_arn         = var.certificate_arn
-    domain_name             = var.domain_name
-    admin_email             = var.admin_email
-    timestamp               = var.user_data_timestamp
-    instance_version        = var.instance_version # Added for version tracking in logs
-    tensor_parallel_size    = var.tensor_parallel_size
-    pipeline_parallel_size  = var.pipeline_parallel_size
-    tool_call_parser        = var.tool_call_parser
+  user_data = templatefile("${path.module}/templates/bootstrap.sh.tpl", {
+    instance_version = var.instance_version
+    aws_region       = var.region
+    scripts_bucket   = var.scripts_bucket
+    main_setup_key   = var.main_setup_key
   })
 }
 

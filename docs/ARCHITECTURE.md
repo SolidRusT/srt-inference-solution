@@ -13,6 +13,7 @@ The solution was designed with the following principles:
 - **Security**: Follow AWS best practices for secure infrastructure
 - **Maintainability**: Modular design for easy updates and extensions
 - **Automation**: Eliminate manual steps in deployment and operation
+- **Resilience**: Multi-layered approach to service management and recovery
 
 ## Architecture Components
 
@@ -34,8 +35,9 @@ The solution consists of the following core components:
 
 - **EC2 Instance**: Hosts the containerized application
   - Uses latest Ubuntu AMI from Canonical
-  - Configured with user-data script to install Docker and set up services
-  - IAM Role with permissions for ECR access
+  - GPU-ready configuration for AI inference
+  - Configurable instance types (standard or GPU-accelerated)
+  - IAM Role with permissions for ECR and S3 access
   - Security group limits access to specified ports and IP ranges
 
 #### Storage and Registry
@@ -43,6 +45,10 @@ The solution consists of the following core components:
 - **ECR Repository**: Stores Docker container images
   - Lifecycle policies to limit stored images
   - Repository policies for secure access
+- **S3 Bucket**: Stores deployment scripts and configuration
+  - Deployment scripts for instance setup
+  - Enables more maintainable infrastructure design
+  - Securely accessed via IAM role
 
 #### DNS Management
 
@@ -51,25 +57,63 @@ The solution consists of the following core components:
 
 ### 2. Application Components
 
-#### Docker Container
+#### Docker Containers
 
-- NodeJS Express application
-- Simple API endpoints:
-  - `/`: Basic information
-  - `/health`: Health check endpoint
-  - `/api/infer`: Sample inference endpoint
+- **API Proxy Container**:
+  - NodeJS Express application
+  - Proxies requests to the vLLM service
+  - Handles security, timeouts, and error management
+  - Implements compatible API endpoints (OpenAI format)
 
-#### Systemd Service
+- **vLLM Container**:
+  - Provides optimized inference for large language models
+  - Configurable for different model sizes
+  - GPU acceleration with tensor parallelism support
+  - Streaming response capability
 
-- Manages the Docker container lifecycle
-- Ensures container starts on instance boot
-- Handles automatic restarts on failure
+#### Systemd Services
 
-#### Update Mechanism
+- **inference-app.service**:
+  - Manages the API Proxy container lifecycle
+  - Ensures container starts on instance boot
+  - Handles automatic restarts on failure
 
-- Hourly cron job to check for new images
-- Automated login to ECR and image pulls
-- Seamless container updates
+- **vllm.service**:
+  - Manages the vLLM inference service
+  - GPU integration for accelerated inference
+  - Environment variable configuration
+
+#### NGINX Configuration
+
+- Reverse proxy for HTTPS termination
+- Intelligent timeout handling for large model inference
+- URL pattern-based timeout configuration
+- Security headers and optimized settings
+
+#### Multi-layered Service Management
+
+- Boot-time service verification
+- Post-reboot service recovery
+- Detailed diagnostics and status checking
+- Automated retry and repair mechanisms
+
+### 3. S3-Based Deployment Architecture
+
+- **Scripts Bucket Module**:
+  - Creates and manages the S3 bucket for deployment scripts
+  - Renders and uploads templated scripts
+  - Organizes scripts by purpose and function
+
+- **Minimal Bootstrap**:
+  - Small bootstrap script in user_data (~1KB)
+  - Downloads and executes main setup script from S3
+  - Ensures EC2 user_data stays well under AWS limits
+
+- **Modular Script Design**:
+  - Utility scripts for common functions
+  - Service configuration scripts
+  - GPU setup for accelerated inference
+  - NGINX configuration for optimized web serving
 
 ## Infrastructure as Code Structure
 
@@ -78,12 +122,20 @@ inference-solution/
 ├── app/                         # Application code
 │   ├── Dockerfile               # Container definition
 │   ├── package.json             # Node.js dependencies
-│   └── server.js                # API implementation
+│   └── server.js                # API implementation with timeout handling
 ├── modules/                     # Terraform modules
 │   ├── build/                   # Image build/push logic
 │   ├── ec2/                     # EC2 instance configuration
+│   │   └── templates/           # Deployment script templates
+│   │       ├── bootstrap.sh.tpl # Minimal user_data script
+│   │       ├── main-setup.sh.tpl # Main orchestration script
+│   │       ├── utility-scripts.sh.tpl # Common utility functions
+│   │       ├── services-setup.sh.tpl # Service definitions
+│   │       ├── gpu-setup.sh.tpl # GPU driver installation
+│   │       └── nginx-setup.sh.tpl # Web server configuration
 │   ├── ecr/                     # Container registry
 │   ├── route53/                 # DNS configuration
+│   ├── scripts_bucket/          # S3 bucket for deployment scripts
 │   └── vpc/                     # Network infrastructure
 ├── backend.tf                   # Terraform state configuration
 ├── main.tf                      # Main infrastructure definition
@@ -101,42 +153,72 @@ inference-solution/
 4. **Build Process**:
    - Application code is built into a Docker image
    - Image is pushed to ECR
-5. **Instance Provisioning**:
-   - EC2 instance is launched with user-data script
+5. **Scripts Preparation**:
+   - Deployment scripts are templated and uploaded to S3
+6. **Instance Provisioning**:
+   - EC2 instance is launched with minimal bootstrap script
+   - Bootstrap downloads and executes scripts from S3
+7. **Service Configuration**:
    - Docker is installed
-   - Systemd service is configured
-6. **Application Deployment**:
-   - EC2 instance pulls Docker image from ECR
-   - Application starts running
-7. **DNS Configuration**: Route53 records are created
+   - GPU drivers are set up (if enabled)
+   - Systemd services are configured
+   - NGINX is installed and configured for HTTPS
+8. **Application Deployment**:
+   - EC2 instance pulls Docker images from ECR and public repositories
+   - vLLM and API proxy applications start running
+9. **DNS Configuration**: Route53 records are created
 
 ## Security Considerations
 
 - **IAM**: Least privilege principle for EC2 instance role
 - **Security Groups**: Traffic restrictions by port and source IP
+- **S3 Access**: Private bucket with IAM-based access
 - **Instance Hardening**:
   - IMDSv2 required
   - Root volume encryption
   - No direct SSH (use Session Manager)
+- **HTTPS Support**:
+  - Let's Encrypt certificate integration
+  - NGINX with secure SSL configuration
+  - Security headers (HSTS, CSP, etc.)
 - **Container Security**:
-  - Minimal base image (Node Alpine)
+  - Minimal base images
   - No unnecessary packages
   - Regular updates via cron job
+
+## Intelligent Timeout Management
+
+The solution implements a multi-layered timeout management approach:
+
+1. **Application Layer**:
+   - Dynamic timeout calculation based on request parameters
+   - Model size detection for automatic timeout adjustment
+   - Special handling for streaming requests
+
+2. **Proxy Layer**:
+   - URL pattern-based timeout configuration in NGINX
+   - Extended timeouts for inference endpoints
+   - Short timeouts for health checks
+   - Default timeouts for other API operations
+
+3. **Configuration Layer**:
+   - Configurable timeout values in Terraform variables
+   - Default timeout: 90 seconds
+   - Extended timeout: 10 minutes (configurable)
+
+This intelligent approach ensures large model inference works reliably while maintaining responsiveness for standard API operations.
 
 ## Future Enhancements
 
 1. **Scaling**:
-
    - Auto Scaling Group for high availability
    - Load Balancer for traffic distribution
 
 2. **Security**:
-
-   - HTTPS with ACM certificates
    - WAF integration for API protection
+   - Enhanced authentication mechanisms
 
 3. **Monitoring**:
-
    - CloudWatch alarms and dashboards
    - Log aggregation and analysis
 
@@ -144,9 +226,24 @@ inference-solution/
    - GitHub Actions integration
    - Automated testing pipeline
 
-## Technical Debt & Known Limitations
+## Technical Improvements in Recent Versions
 
-1. Single instance deployment (no high availability)
-2. HTTP only (no HTTPS/TLS)
-3. Basic authentication mechanism
-4. Limited monitoring and alerting
+1. **S3-Based Deployment**: 
+   - More maintainable script organization
+   - Stays within AWS user_data limits
+   - Easier to update individual components
+
+2. **Enhanced Service Management**:
+   - Multi-layered service verification
+   - Automated recovery mechanisms
+   - Better error reporting and diagnostics
+
+3. **Intelligent Timeout Handling**:
+   - Request-aware timeout calculation
+   - Multiple timeout layers (app, proxy)
+   - Configuration through Terraform variables
+
+4. **HTTPS Support**:
+   - Let's Encrypt integration
+   - Optimized NGINX configuration
+   - Security headers and best practices

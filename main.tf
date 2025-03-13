@@ -11,7 +11,7 @@ locals {
 
   instance_name = "inference-${var.environment}"
   # Fixed timestamp to prevent unnecessary EC2 recreation
-  deployment_timestamp = "2025-03-12"
+  deployment_timestamp = "2025-03-13"
 }
 
 # VPC and networking
@@ -30,6 +30,36 @@ module "ecr" {
   source = "./modules/ecr"
   repository_name = "inference-app-${var.environment}"
   tags           = local.tags
+}
+
+# S3 bucket for scripts
+module "scripts_bucket" {
+  source = "./modules/scripts_bucket"
+  name           = "inference-scripts"
+  environment    = var.environment
+  region         = var.region
+  aws_region     = var.region
+  app_port       = var.app_port
+  vllm_port      = var.vllm_port
+  ecr_repository_url = module.ecr.repository_url
+  hf_token_parameter_name = var.hf_token_parameter_name
+  use_gpu       = var.use_gpu_instance
+  model_id      = var.model_id
+  max_model_len = var.max_model_len
+  gpu_memory_utilization = var.gpu_memory_utilization
+  vllm_image_tag = var.vllm_image_tag
+  enable_https  = var.enable_https && var.create_route53_records
+  domain_name   = var.domain_name
+  admin_email   = var.email_address
+  default_proxy_timeout = var.default_proxy_timeout
+  max_proxy_timeout = var.max_proxy_timeout
+  tensor_parallel_size = var.tensor_parallel_size
+  pipeline_parallel_size = var.pipeline_parallel_size
+  tool_call_parser = var.tool_call_parser
+  instance_version = var.ec2_instance_version
+  tags          = local.tags
+
+  depends_on = [module.ecr]
 }
 
 # EC2 instance for running the inference application
@@ -62,6 +92,10 @@ module "ec2" {
   user_data_timestamp = local.deployment_timestamp
   instance_version  = var.ec2_instance_version  # Pass through the instance version
   root_volume_size  = var.root_volume_size
+  default_proxy_timeout = var.default_proxy_timeout
+  max_proxy_timeout = var.max_proxy_timeout
+  scripts_bucket    = module.scripts_bucket.bucket_name
+  main_setup_key    = module.scripts_bucket.main_setup_key
   tags              = local.tags
 }
 

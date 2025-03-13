@@ -9,7 +9,9 @@ const httpsPort = process.env.HTTPS_PORT || 443;
 const vllmPort = process.env.VLLM_PORT || 8000;
 const vllmHost = process.env.VLLM_HOST || 'localhost';
 const useHttps = process.env.USE_HTTPS === 'true';
-const appVersion = '1.1.0';
+const defaultTimeout = parseInt(process.env.DEFAULT_TIMEOUT_MS) || 60000; // Default 60 seconds
+const maxTimeout = parseInt(process.env.MAX_TIMEOUT_MS) || 300000; // Max 5 minutes
+const appVersion = '1.1.1'; // Updated version number
 
 // Security headers middleware
 app.use((req, res, next) => {
@@ -26,6 +28,38 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Calculate appropriate timeout based on request parameters
+function calculateTimeout(req) {
+  let timeout = defaultTimeout;
+  
+  // For chat/completions requests, scale timeout based on max_tokens
+  if (req.body) {
+    // Check if this is a request with max_tokens parameter
+    if (req.body.max_tokens) {
+      // Base timeout on tokens: 10ms per token plus base time for model loading
+      const tokensTimeout = Math.min(maxTimeout, 30000 + (req.body.max_tokens * 10));
+      timeout = Math.max(timeout, tokensTimeout);
+      console.log(`Request with ${req.body.max_tokens} max_tokens, setting timeout to ${timeout}ms`);
+    }
+    
+    // For larger context models, add additional time
+    if (req.body.model && req.body.model.toLowerCase().includes('32b')) {
+      // Add 50% more time for large models
+      timeout = Math.min(maxTimeout, timeout * 1.5);
+      console.log(`Large model detected (${req.body.model}), increasing timeout to ${timeout}ms`);
+    }
+    
+    // Check if this is a streaming request
+    if (req.body.stream === true) {
+      // For streaming requests, use a higher timeout as they may continue for longer
+      timeout = maxTimeout;
+      console.log(`Streaming request detected, setting timeout to ${timeout}ms`);
+    }
+  }
+  
+  return Math.min(timeout, maxTimeout);
+}
+
 // Utility function for proxying requests to vLLM
 function proxyToVLLM(path, req, res, transformResponse = null) {
   try {
@@ -33,12 +67,16 @@ function proxyToVLLM(path, req, res, transformResponse = null) {
     const isGet = !req.body || Object.keys(req.body).length === 0;
     const method = isGet ? 'GET' : 'POST';
     
+    // Calculate appropriate timeout for this request
+    const timeout = calculateTimeout(req);
+    
     // Set up the options for the request
     const options = {
       hostname: vllmHost,
       port: vllmPort,
       path: path,
       method: method,
+      timeout: timeout,
       headers: {
         'Accept': 'application/json'
       }

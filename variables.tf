@@ -163,3 +163,15 @@ variable "ec2_instance_version" {
   type        = number
   default     = 1
 }
+
+variable "default_proxy_timeout" {
+  description = "Default timeout in seconds for proxy connections"
+  type        = number
+  default     = 75
+}
+
+variable "max_proxy_timeout" {
+  description = "Maximum timeout in seconds for proxy connections (for large model inference)"
+  type        = number
+  default     = 300
+}

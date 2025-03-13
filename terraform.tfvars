@@ -18,21 +18,25 @@ email_address     = "admin@live.ca.obenv.net"
 
 # EC2 instance settings
 instance_type     = "t3.small"
-root_volume_size  = 200  # default is 30
+root_volume_size  = 100 # 150  # default is 30
 use_gpu_instance  = true
-gpu_instance_type = "g6.12xlarge" # smallest is g6.xlarge
+gpu_instance_type = "g6.2xlarge" # "g6.12xlarge" # smallest is g6.xlarge
 key_name          = "ob-live-open-inference-oregon"
 app_port          = 8080
 
 # Deployment version - increment to force replacement of EC2 instance
-ec2_instance_version = 1
+ec2_instance_version = 5
+
+# Timeout Configuration
+default_proxy_timeout = 90    # Default timeout in seconds for most API operations
+max_proxy_timeout = 600      # Extended timeout for large model inference (10 minutes)
 
 # vLLM Configuration
 vllm_port              = 8000
-model_id               = "Qwen/QwQ-32B"
-max_model_len          = 40960
-gpu_memory_utilization = 0.98  # Reduced for stability with large models
-tensor_parallel_size   = 4     # Use all 4 GPUs on g6.12xlarge
+model_id               = "solidrust/Hermes-3-Llama-3.1-8B-AWQ" # "Qwen/QwQ-32B"
+max_model_len          = 16384 # 32768
+gpu_memory_utilization = 0.98 # 0.95  # Reduced for stability with large models
+tensor_parallel_size   = 1 # 4     # Use all 4 GPUs on g6.12xlarge
 pipeline_parallel_size = 1     # Default pipeline parallelism
 tool_call_parser       = "hermes"  # Choose appropriate parser for the model
 vllm_image_tag         = "latest"

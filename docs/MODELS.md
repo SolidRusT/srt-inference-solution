@@ -78,14 +78,14 @@ For large models or instances with multiple GPUs, vLLM supports two parallelism 
 **Model ID:** `Qwen/QwQ-32B`
 - **GPU Requirements:** 48GB VRAM minimum (tensor parallelism recommended)
 - **Recommended Instance:** g6.12xlarge
-- **Context Length:** 131,072 tokens (128K)
+- **Context Length:** 32,768 tokens (32K)
 - **Quantization:** None (full precision)
 - **Description:** High-capacity reasoning model with extended context window from Alibaba Cloud
 - **Use Cases:** Complex reasoning, long document analysis, specialized knowledge tasks
 - **Performance Notes:** 
   - Requires multi-GPU setup for optimal performance
   - With g6.12xlarge (4x24GB GPUs), use tensor parallelism across all 4 GPUs
-  - Set `gpu_memory_utilization` to 0.8-0.9 for stability
+  - Set `gpu_memory_utilization` to 0.95 for stability
 - **Configuration Settings:**
   - tensor_parallel_size = 4 (for g6.12xlarge)
   - pipeline_parallel_size = 1
@@ -133,11 +133,11 @@ gpu_instance_type = "g6.12xlarge"  # Provides 4x24GB GPUs
 
 # vLLM Configuration
 model_id               = "Qwen/QwQ-32B"
-max_model_len          = 40960
-gpu_memory_utilization = 0.98
+max_model_len          = 32768
+gpu_memory_utilization = 0.95    # reduced for greater stability
 tensor_parallel_size   = 4       # Use all 4 GPUs on g6.12xlarge
 pipeline_parallel_size = 1
-tool_call_parser       = "hermes"  # Seems to work fine with Hermes
+tool_call_parser       = "hermes"  # Seems to work fine with QwQ
 ```
 
 ### For Maximum Throughput on g6.48xlarge
@@ -148,11 +148,11 @@ gpu_instance_type = "g6.48xlarge"  # Provides 8x24GB GPUs
 
 # vLLM Configuration
 model_id               = "Qwen/QwQ-32B"
-max_model_len          = 40960
-gpu_memory_utilization = 0.98
+max_model_len          = 32768
+gpu_memory_utilization = 0.95    # reduced for greater stability
 tensor_parallel_size   = 4       # Split model across 4 GPUs
 pipeline_parallel_size = 2       # Create 2 pipeline stages for throughput
-tool_call_parser       = "hermes"  # Seems to work fine with Hermes
+tool_call_parser       = "hermes"  # Seems to work fine with QwQ
 ```
 
 ## Adding New Models

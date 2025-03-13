@@ -1,3 +1,13 @@
+variable "scripts_bucket" {
+  description = "Name of the S3 bucket containing deployment scripts"
+  type        = string
+}
+
+variable "main_setup_key" {
+  description = "S3 key for the main setup script"
+  type        = string
+}
+
 variable "name" {
   description = "Name for the EC2 instance and related resources"
   type        = string
@@ -160,4 +170,16 @@ variable "instance_version" {
   description = "Instance version - increment to force replacement"
   type        = number
   default     = 1
+}
+
+variable "default_proxy_timeout" {
+  description = "Default timeout in seconds for proxy connections"
+  type        = number
+  default     = 75
+}
+
+variable "max_proxy_timeout" {
+  description = "Maximum timeout in seconds for proxy connections (for large model inference)"
+  type        = number
+  default     = 300
 }
