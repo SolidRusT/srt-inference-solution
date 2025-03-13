@@ -149,10 +149,10 @@ For more significant changes that require a fresh EC2 instance:
 
 1. Edit `terraform.tfvars` and increment the `ec2_instance_version` value:
 
-```hcl
-# Change this from the current value (e.g., from 1 to 2)
-ec2_instance_version = 2
-```
+  ```hcl
+  # Change this from the current value (e.g., from 1 to 2)
+  ec2_instance_version = 2
+  ```
 
 2. Run `terraform apply`
 

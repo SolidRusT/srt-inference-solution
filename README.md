@@ -150,10 +150,10 @@ After deployment, Terraform provides detailed outputs including:
 
 1. Edit `terraform.tfvars` and increment the `ec2_instance_version` value:
 
-```hcl
-# Change this from the current value (e.g., from 1 to 2)
-ec2_instance_version = 2
-```
+    ```hcl
+    # Change this from the current value (e.g., from 1 to 2)
+    ec2_instance_version = 2
+    ```
 
 2. Run `terraform apply`
 
@@ -162,7 +162,7 @@ ec2_instance_version = 2
    - Wait for the new instance to be ready
    - Move the Elastic IP to the new instance
    - Terminate the old instance
-   
+
 This approach enables zero-downtime deployments while maintaining the same public IP address.
 
 ### Cleaning Up
