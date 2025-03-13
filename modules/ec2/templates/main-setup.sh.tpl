@@ -163,6 +163,16 @@ systemctl start amazon-ssm-agent
 # Create a service status script for easy checking
 cat > /usr/local/bin/check-services.sh << 'EOCS'
 #!/bin/bash
+
+# Source the configuration if available
+GPU_ENABLED=false
+if [ -f /opt/inference/config.env ]; then
+  source /opt/inference/config.env
+  if [ "$USE_GPU" = "true" ]; then
+    GPU_ENABLED=true
+  fi
+fi
+
 echo "=== Service Status Check at $(date) ==="
 
 echo "\n=== System Information ==="
@@ -171,40 +181,48 @@ free -m
 df -h /
 
 echo "\n=== Service Status ==="
-echo "vLLM service: $(systemctl is-active vllm) ($(systemctl is-enabled vllm))"
 echo "Inference app: $(systemctl is-active inference-app) ($(systemctl is-enabled inference-app))"
 echo "Docker status: $(systemctl is-active docker) ($(systemctl is-enabled docker))"
 
-echo "\n=== Docker Containers ==="
-docker ps -a
-
-echo "\n=== NVIDIA Status ==="
-if command -v nvidia-smi > /dev/null; then
-  nvidia-smi
+if [ "$GPU_ENABLED" = "true" ]; then
+  echo "vLLM service: $(systemctl is-active vllm) ($(systemctl is-enabled vllm))"
+  echo "\n=== NVIDIA Status ==="
+  nvidia-smi || echo "NVIDIA drivers not available or not loaded"
 else
-  echo "NVIDIA drivers not available"
+  echo "vLLM service: disabled (GPU support not enabled)"
+  echo "\n=== NVIDIA Status ==="
+  echo "GPU support not enabled"
 fi
 
 echo "\n=== Network Status ==="
 netstat -tulpn | grep -E "(8080|8000|443)" || echo "No services listening on API ports"
 
 echo "\n=== API Status ==="
-echo "vLLM Health Check:"
-curl -s http://localhost:8000/health || echo "vLLM API not responding"
-echo "\nInference API Health Check:"
+echo "Inference API Health Check:"
 curl -s http://localhost:8080/health || echo "Inference API not responding"
 
+if [ "$GPU_ENABLED" = "true" ]; then
+  echo "\nvLLM Health Check:"
+  curl -s http://localhost:8000/health || echo "vLLM API not responding"
+fi
+
 echo "\n=== Container Logs ==="
-echo "--- Last 15 lines of vLLM container logs ---"
-docker logs vllm-service --tail 15 2>&1 || echo "No vLLM container logs available"
-echo "\n--- Last 15 lines of inference-app container logs ---"
+echo "--- Last 15 lines of inference-app container logs ---"
 docker logs inference-app --tail 15 2>&1 || echo "No inference-app container logs available"
 
+if [ "$GPU_ENABLED" = "true" ]; then
+  echo "\n--- Last 15 lines of vLLM container logs ---"
+  docker logs vllm-service --tail 15 2>&1 || echo "No vLLM container logs available"
+fi
+
 echo "\n=== Service Logs ==="
-echo "--- Last 15 lines of vLLM service logs ---"
-journalctl -u vllm --no-pager -n 15
-echo "\n--- Last 15 lines of inference-app service logs ---"
+echo "--- Last 15 lines of inference-app service logs ---"
 journalctl -u inference-app --no-pager -n 15
+
+if [ "$GPU_ENABLED" = "true" ]; then
+  echo "\n--- Last 15 lines of vLLM service logs ---"
+  journalctl -u vllm --no-pager -n 15
+fi
 
 echo "\n=== Startup Scripts ==="
 ls -la /var/lib/cloud/scripts/per-boot/
@@ -226,7 +244,7 @@ cat > /var/lib/cloud/scripts/per-boot/post-reboot-setup.sh << 'EOB'
 
 # Log outputs to a file for debugging
 exec > >(tee /var/log/post-reboot-setup.log) 2>&1
-echo "Running post-reboot setup at $(date)"
+echo "Running post-reboot setup at $$(date)"
 
 # Check if NVIDIA drivers are loaded
 if ! nvidia-smi > /dev/null 2>&1; then
@@ -277,7 +295,7 @@ systemctl status vllm --no-pager
 systemctl status inference-app --no-pager
 docker ps
 
-echo "Post-reboot setup completed at $(date)"
+echo "Post-reboot setup completed at $$(date)"
 EOB
 chmod +x /var/lib/cloud/scripts/per-boot/post-reboot-setup.sh
 

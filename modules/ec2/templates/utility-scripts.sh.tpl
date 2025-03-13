@@ -51,7 +51,7 @@ HF_TOKEN=$(/usr/local/bin/get-hf-token.sh)
 if [ -z "$HF_TOKEN" ]; then
   echo "ERROR: No HuggingFace token available!"
 else
-  echo "HuggingFace token found. First few characters: ${HF_TOKEN:0:4}..."
+  echo "HuggingFace token found. First few characters: $${HF_TOKEN:0:4}..."
 fi
 
 echo "Checking vLLM service status..."
@@ -159,7 +159,7 @@ else
 {
   "status": "error",
   "message": "API service is not running",
-  "vllm_status": "$([ "$vllm_api_healthy" = "true" ] && echo "healthy" || echo "unavailable")",
+  "vllm_status": "$$([ "$vllm_api_healthy" = "true" ] && echo "healthy" || echo "unavailable")",
   "api_status": "unavailable",
   "gpu_enabled": true
 }
@@ -218,6 +218,8 @@ done
 echo "Failed to connect to vLLM service after $MAX_ATTEMPTS attempts"
 exit 1
 EOL
+chmod +x /usr/local/bin/wait-for-vllm.sh
+
 # Create a script to monitor vLLM status
 cat > /usr/local/bin/monitor-vllm.sh << 'EOL'
 #!/bin/bash
