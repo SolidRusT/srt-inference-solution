@@ -79,31 +79,47 @@ docker pull vllm/vllm-openai:latest || echo "Failed to pull vLLM image but conti
 aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $(aws sts get-caller-identity --query 'Account' --output text).dkr.ecr.$AWS_REGION.amazonaws.com
 docker pull $(aws sts get-caller-identity --query 'Account' --output text).dkr.ecr.$AWS_REGION.amazonaws.com/inference-app-production:latest || echo "Failed to pull inference app image but continuing..."
 
-# Create a cron job to check for updates every hour
-echo "0 * * * * /usr/local/bin/update-inference-app.sh" | crontab -
+# Create a cron job to check for updates every hour and monitor vLLM
+cat > /etc/cron.d/inference-maintenance << 'EOCRON'
+# Update inference app image hourly
+0 * * * * root /usr/local/bin/update-inference-app.sh > /dev/null 2>&1
+
+# Check vLLM health every 5 minutes and restart if needed
+*/5 * * * * root /usr/local/bin/monitor-vllm.sh > /tmp/vllm-status.json 2>&1 && if grep -q '"api_status": "unavailable"' /tmp/vllm-status.json; then /usr/local/bin/restart-vllm.sh; fi
+EOCRON
+
+# Set proper permissions
+chmod 0644 /etc/cron.d/inference-maintenance
 
 # Enable and start the services with more robust error handling
 echo "===== Starting services ====="
 systemctl daemon-reload
 
-# Enable and start vLLM with detailed error reporting
+# Enable services (but don't start yet)
 echo "Enabling vLLM service..."
 systemctl enable vllm
-echo "Starting vLLM service..."
-if ! systemctl start vllm; then
-  echo "Failed to start vLLM service, checking logs:"
-  journalctl -u vllm --no-pager -n 50
-  echo "Will try to continue with inference app service..."
-fi
-
-# Enable and start inference app with detailed error reporting
 echo "Enabling inference-app service..."
 systemctl enable inference-app
+
+# Start inference app independently
 echo "Starting inference-app service..."
 if ! systemctl start inference-app; then
   echo "Failed to start inference-app service, checking logs:"
   journalctl -u inference-app --no-pager -n 50
-  echo "Will try to continue with monitoring setup..."
+  docker logs inference-app || echo "No inference-app container logs available"
+  echo "Will try again after a short wait..."
+  sleep 10
+  systemctl restart inference-app || echo "Second attempt to start inference-app failed"
+fi
+
+# Start vLLM service
+echo "Starting vLLM service..."
+if ! systemctl start vllm; then
+  echo "Failed to start vLLM service, checking logs:"
+  journalctl -u vllm --no-pager -n 50
+  echo "Will try again after a short wait..."
+  sleep 10
+  systemctl restart vllm || echo "Second attempt to start vLLM failed"
 fi
 
 # Run vLLM test script to check status
@@ -128,19 +144,56 @@ systemctl start amazon-ssm-agent
 # Create a service status script for easy checking
 cat > /usr/local/bin/check-services.sh << 'EOCS'
 #!/bin/bash
-echo "=== Service Status ==="
+echo "=== Service Status Check at $(date) ==="
+
+echo "\n=== System Information ==="
+uptime
+free -m
+df -h /
+
+echo "\n=== Service Status ==="
 echo "vLLM service: $(systemctl is-active vllm) ($(systemctl is-enabled vllm))"
 echo "Inference app: $(systemctl is-active inference-app) ($(systemctl is-enabled inference-app))"
 echo "Docker status: $(systemctl is-active docker) ($(systemctl is-enabled docker))"
-echo "=== Docker Containers ==="
+
+echo "\n=== Docker Containers ==="
 docker ps -a
-echo "=== NVIDIA Status ==="
-nvidia-smi || echo "NVIDIA drivers not available"
-echo "=== Service Logs ==="
-echo "--- Last 10 lines of vLLM logs ---"
-journalctl -u vllm --no-pager -n 10
-echo "--- Last 10 lines of inference-app logs ---"
-journalctl -u inference-app --no-pager -n 10
+
+echo "\n=== NVIDIA Status ==="
+if command -v nvidia-smi > /dev/null; then
+  nvidia-smi
+else
+  echo "NVIDIA drivers not available"
+fi
+
+echo "\n=== Network Status ==="
+netstat -tulpn | grep -E "(8080|8000|443)" || echo "No services listening on API ports"
+
+echo "\n=== API Status ==="
+echo "vLLM Health Check:"
+curl -s http://localhost:8000/health || echo "vLLM API not responding"
+echo "\nInference API Health Check:"
+curl -s http://localhost:8080/health || echo "Inference API not responding"
+
+echo "\n=== Container Logs ==="
+echo "--- Last 15 lines of vLLM container logs ---"
+docker logs vllm-service --tail 15 2>&1 || echo "No vLLM container logs available"
+echo "\n--- Last 15 lines of inference-app container logs ---"
+docker logs inference-app --tail 15 2>&1 || echo "No inference-app container logs available"
+
+echo "\n=== Service Logs ==="
+echo "--- Last 15 lines of vLLM service logs ---"
+journalctl -u vllm --no-pager -n 15
+echo "\n--- Last 15 lines of inference-app service logs ---"
+journalctl -u inference-app --no-pager -n 15
+
+echo "\n=== Startup Scripts ==="
+ls -la /var/lib/cloud/scripts/per-boot/
+
+echo "\n=== Recent Boot Log ==="
+tail -n 20 /var/log/post-reboot-setup.log 2>/dev/null || echo "No post-reboot log available"
+
+echo "\n=== Service Status Check Completed ==="
 EOCS
 chmod +x /usr/local/bin/check-services.sh
 
@@ -148,24 +201,54 @@ chmod +x /usr/local/bin/check-services.sh
 if [ "$USE_GPU" = "true" ]; then
   echo "===== Scheduling reboot to complete GPU setup ====="
   # Create a startup script to handle post-reboot tasks
-  mkdir -p /var/lib/cloud/scripts/per-boot
-  cat > /var/lib/cloud/scripts/per-boot/post-reboot-setup.sh << 'EOB'
+mkdir -p /var/lib/cloud/scripts/per-boot
+cat > /var/lib/cloud/scripts/per-boot/post-reboot-setup.sh << 'EOB'
 #!/bin/bash
+
+# Log outputs to a file for debugging
+exec > >(tee /var/log/post-reboot-setup.log) 2>&1
+echo "Running post-reboot setup at $(date)"
+
 # Check if NVIDIA drivers are loaded
 if ! nvidia-smi > /dev/null 2>&1; then
   echo "NVIDIA drivers not loaded after reboot, trying to reload"
+  # Add actions to reload NVIDIA if needed
 fi
 
-# Make sure services are running
-echo "Making sure services are running after reboot..."
-systemctl restart vllm
-systemctl restart inference-app
+# Stop any potentially running services
+systemctl stop inference-app
+systemctl stop vllm
+
+# Clean up any old containers
+docker rm -f vllm-service inference-app || echo "No containers to remove"
+
+# Wait to ensure everything is stopped
+sleep 5
+
+# Start API first for immediate availability
+echo "Starting inference-app service after reboot..."
+systemctl start inference-app
+
+# Start vLLM
+echo "Starting vLLM service after reboot..."
+systemctl start vllm
+
+# Wait a bit more
+sleep 10
 
 # Run the test script to verify everything
 echo "Running post-reboot vLLM test..."
 /usr/local/bin/test-vllm.sh > /var/log/post-reboot-vllm-test.log 2>&1
+
+# Check final status
+echo "Final service status after reboot:"
+systemctl status vllm --no-pager
+systemctl status inference-app --no-pager
+docker ps
+
+echo "Post-reboot setup completed at $(date)"
 EOB
-  chmod +x /var/lib/cloud/scripts/per-boot/post-reboot-setup.sh
+chmod +x /var/lib/cloud/scripts/per-boot/post-reboot-setup.sh
 
   # Schedule a reboot in 1 minute to give cloud-init time to finish
   echo "Scheduling reboot in 1 minute..."

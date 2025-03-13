@@ -1,13 +1,16 @@
+#!/bin/bash
+
 # Create service files
+set -e
 echo "===== Creating systemd services ====="
 
 # Create vLLM service
 cat > /etc/systemd/system/vllm.service << EOT
 [Unit]
 Description=vLLM Inference Service
-After=docker.service
+After=docker.service network.target
 Requires=docker.service
-Before=inference-app.service
+# No direct relationship with inference-app to avoid startup issues
 
 [Service]
 TimeoutStartSec=0
@@ -52,8 +55,9 @@ EOT
 cat > /etc/systemd/system/inference-app.service << EOT
 [Unit]
 Description=Inference API Proxy
-After=docker.service
+After=docker.service network.target
 Requires=docker.service
+# No dependency on vLLM to allow operation even when vLLM is down
 
 [Service]
 TimeoutStartSec=0
@@ -62,6 +66,7 @@ ExecStartPre=-/usr/bin/docker stop inference-app
 ExecStartPre=-/usr/bin/docker rm inference-app
 ExecStartPre=/usr/local/bin/docker-login-ecr.sh
 ExecStartPre=/usr/bin/docker pull ${ecr_repository_url}:latest
+# No wait for vLLM to allow independent start
 ExecStart=/usr/bin/docker run --rm --name inference-app \\
     -p ${app_port}:${app_port} \\
 EOT

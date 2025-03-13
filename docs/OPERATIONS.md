@@ -365,24 +365,41 @@ The solution collects standard EC2 metrics in CloudWatch. Key metrics to monitor
 The solution includes built-in diagnostic tools to help troubleshoot issues:
 
 ```bash
+# Comprehensive service status check
+sudo /usr/local/bin/check-services.sh
+
 # Run the vLLM diagnostic script
 sudo /usr/local/bin/test-vllm.sh
+
+# Wait for vLLM to be available (with timeout)
+sudo /usr/local/bin/wait-for-vllm.sh
 
 # Check the installation log
 cat /var/log/user-data.log
 
 # Check logs from the post-reboot setup
+cat /var/log/post-reboot-setup.log
 cat /var/log/post-reboot-vllm-test.log
 
 # Test HuggingFace token retrieval
 sudo /usr/local/bin/get-hf-token.sh
 
-# Check service status with detailed output
-sudo /usr/local/bin/check-services.sh
-
 # Check NVIDIA drivers (GPU instances)
 nvidia-smi
 ```
+
+The enhanced `check-services.sh` script provides comprehensive diagnostics including:
+
+- System information (uptime, memory, disk usage)
+- Service status (active/enabled state of all services)
+- Docker container status
+- NVIDIA GPU status
+- Network port status (which services are listening)
+- API health checks for both vLLM and inference-app
+- Container logs for both services
+- Systemd service logs
+- Startup script verification
+- Recent boot logs
 
 When running `terraform apply`, the output includes useful maintenance commands that can be run from your local machine for remote diagnostics.
 
@@ -428,6 +445,38 @@ sudo /tmp/nginx-setup.sh
 ```
 
 ## Troubleshooting
+
+## Service Startup Mechanism
+
+The solution implements a sophisticated service startup sequence to ensure reliable operation:
+
+### 1. Boot-Time Sequence
+
+1. Bootstrap script runs via user-data
+2. Component scripts are downloaded from S3 and executed
+3. Services are enabled but not immediately started
+4. vLLM service is started first with retry mechanism
+5. System waits for vLLM to be fully available using health checks
+6. Inference-app service starts only after vLLM is verified working
+
+### 2. Post-Reboot Sequence
+
+After a reboot (especially important for GPU instances that require driver initialization):
+
+1. Post-reboot script runs automatically from `/var/lib/cloud/scripts/per-boot/`
+2. Any running containers are stopped and removed for clean startup
+3. Services are restarted in the correct sequence
+4. Health checks verify full system operation
+5. Detailed logs are written to `/var/log/post-reboot-setup.log`
+
+### 3. Service Health Monitoring
+
+The solution provides several tools for health verification:
+
+- `/usr/local/bin/wait-for-vllm.sh`: Waits for vLLM to be responding on health endpoint
+- `/usr/local/bin/test-vllm.sh`: Tests vLLM functionality and configuration
+- `/usr/local/bin/check-services.sh`: Comprehensive system health check
+- `/usr/local/bin/health-check.sh`: Quick check for monitoring integration
 
 ### Common Issues and Resolutions
 

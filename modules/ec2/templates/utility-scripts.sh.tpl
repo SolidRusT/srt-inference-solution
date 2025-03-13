@@ -58,19 +58,62 @@ echo "==== End of vLLM Test ===="
 EOL
 chmod +x /usr/local/bin/test-vllm.sh
 
-# Create a health check script
+# Create an enhanced health check script
 cat > /usr/local/bin/health-check.sh << 'EOL'
 #!/bin/bash
+
 # Check if both services are running
 vllm_status=$(systemctl is-active vllm)
 api_status=$(systemctl is-active inference-app)
 
-if [ "$vllm_status" = "active" ] && [ "$api_status" = "active" ]; then
-  # Now check if the API is responding
-  curl -s http://localhost:${app_port}/health || exit 1
-  exit 0
+# Get vLLM API health
+vllm_api_healthy=false
+if curl -s http://localhost:${vllm_port}/health > /dev/null 2>&1; then
+  vllm_api_healthy=true
+fi
+
+# Format the response based on service statuses
+if [ "$api_status" = "active" ]; then
+  # API is running
+  if [ "$vllm_api_healthy" = "true" ]; then
+    # Everything is good
+    cat << EOF
+{
+  "status": "ok",
+  "message": "API and vLLM service are healthy",
+  "vllm_status": "healthy",
+  "api_status": "healthy"
+}
+EOF
+    exit 0
+  else
+    # API is up but vLLM is not responding
+    # Get more information about vLLM
+    vllm_info=$(/usr/local/bin/monitor-vllm.sh)
+    
+    cat << EOF
+{
+  "status": "warning",
+  "message": "API is healthy but vLLM service is not responding",
+  "vllm_status": "unavailable",
+  "api_status": "healthy",
+  "vllm_info": $vllm_info
+}
+EOF
+    # Return status 200 since API is up
+    exit 0
+  fi
 else
-  echo "Services not running: vLLM=$vllm_status, API=$api_status"
+  # API is not running
+  cat << EOF
+{
+  "status": "error",
+  "message": "API service is not running",
+  "vllm_status": "$([ "$vllm_api_healthy" = "true" ] && echo "healthy" || echo "unavailable")",
+  "api_status": "unavailable"
+}
+EOF
+  # Return error status
   exit 1
 fi
 EOL
@@ -90,3 +133,118 @@ docker pull ${ecr_repository_url}:latest
 systemctl restart inference-app
 EOL
 chmod +x /usr/local/bin/update-inference-app.sh
+
+# Create a script to wait for vLLM to be ready
+cat > /usr/local/bin/wait-for-vllm.sh << 'EOL'
+#!/bin/bash
+
+MAX_ATTEMPTS=30
+ATTEMPT=0
+
+echo "Waiting for vLLM service to be available..." 
+
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+  ATTEMPT=$((ATTEMPT+1))
+  echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
+  
+  # Check if the vLLM container is running
+  if ! docker ps | grep -q vllm-service; then
+    echo "vLLM container is not running yet"
+    sleep 10
+    continue
+  fi
+  
+  # Try to connect to the health endpoint
+  if curl -s http://localhost:${vllm_port}/health > /dev/null; then
+    echo "vLLM service is available!"
+    exit 0
+  else
+    echo "vLLM service not responding yet"
+    sleep 10
+  fi
+done
+
+echo "Failed to connect to vLLM service after $MAX_ATTEMPTS attempts"
+exit 1
+EOL
+# Create a script to monitor vLLM status
+cat > /usr/local/bin/monitor-vllm.sh << 'EOL'
+#!/bin/bash
+
+# This script checks the status of vLLM and returns useful information
+
+# Check if vLLM service is active
+VLLM_SERVICE_STATUS=$(systemctl is-active vllm)
+
+# Check if vLLM container is running
+if docker ps | grep -q vllm-service; then
+  VLLM_CONTAINER_STATUS="running"
+  # Get vLLM container start time
+  CONTAINER_STARTED=$(docker inspect --format='{{.State.StartedAt}}' vllm-service 2>/dev/null | xargs -I{} date -d {} +"%Y-%m-%d %H:%M:%S")
+  # Get last log lines
+  LAST_LOGS=$(docker logs vllm-service --tail 5 2>&1 | sed 's/\"//g' | tr '\n' ' ' | cut -c 1-500)
+else
+  VLLM_CONTAINER_STATUS="not_running"
+  CONTAINER_STARTED="N/A"
+  LAST_LOGS="No container running"
+fi
+
+# Try to get vLLM health status
+if curl -s http://localhost:${vllm_port}/health > /dev/null 2>&1; then
+  VLLM_API_STATUS="healthy"
+else
+  VLLM_API_STATUS="unavailable"
+fi
+
+# Output information in JSON format
+cat << EOF
+{
+  "service_status": "$VLLM_SERVICE_STATUS",
+  "container_status": "$VLLM_CONTAINER_STATUS",
+  "api_status": "$VLLM_API_STATUS",
+  "started_at": "$CONTAINER_STARTED",
+  "last_logs": "$LAST_LOGS"
+}
+EOF
+EOL
+chmod +x /usr/local/bin/monitor-vllm.sh
+
+# Create a script that can restart vLLM if needed
+cat > /usr/local/bin/restart-vllm.sh << 'EOL'
+#!/bin/bash
+
+# Log to a file
+exec > >(tee -a /var/log/vllm-restarts.log) 2>&1
+echo "[$(date)] Attempting to restart vLLM service"
+
+# Check current status
+VLLM_STATUS=$(systemctl is-active vllm)
+echo "[$(date)] Current vLLM service status: $VLLM_STATUS"
+
+# Stop any running containers
+docker stop vllm-service 2>/dev/null || echo "No container to stop"
+docker rm vllm-service 2>/dev/null || echo "No container to remove"
+
+# Restart the service
+echo "[$(date)] Restarting vLLM service"
+systemctl restart vllm
+
+# Wait a bit and check status
+sleep 5
+NEW_STATUS=$(systemctl is-active vllm)
+echo "[$(date)] New vLLM service status: $NEW_STATUS"
+
+# Try to wait for it to be fully available
+echo "[$(date)] Waiting for vLLM API to respond"
+/usr/local/bin/wait-for-vllm.sh
+RESULT=$?
+
+if [ $RESULT -eq 0 ]; then
+  echo "[$(date)] vLLM successfully restarted and API is responding"
+  exit 0
+else
+  echo "[$(date)] vLLM restarted but API is not responding yet"
+  exit 1
+fi
+EOL
+chmod +x /usr/local/bin/restart-vllm.sh

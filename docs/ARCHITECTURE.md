@@ -92,10 +92,13 @@ The solution consists of the following core components:
 
 #### Multi-layered Service Management
 
-- Boot-time service verification
-- Post-reboot service recovery
+- Boot-time service verification with dependency management
+- Intelligent service startup sequencing
+- Post-reboot service recovery with container cleanup
 - Detailed diagnostics and status checking
 - Automated retry and repair mechanisms
+- Health endpoint verification
+- Service readiness probes
 
 ### 3. S3-Based Deployment Architecture
 
@@ -185,6 +188,45 @@ inference-solution/
   - Minimal base images
   - No unnecessary packages
   - Regular updates via cron job
+
+## Multi-Tier Architecture Benefits
+
+The solution uses a multi-tier architecture with NGINX, Node.js API Proxy, and vLLM. This approach provides several key benefits:
+
+### 1. Separation of Concerns
+
+- **NGINX**: Handles web server concerns (SSL/TLS, security headers, load balancing)
+- **Node.js Proxy**: Manages API-specific business logic and request transformation
+- **vLLM**: Focuses exclusively on ML inference
+
+This separation follows the single responsibility principle, isolating certificate management, API handling, and ML inference as separate concerns.
+
+### 2. Enhanced Security
+
+- **Defense in Depth**: Multiple layers provide additional security barriers
+- **SSL/TLS Management**: Certificate handling by NGINX, a battle-tested web server
+- **Request Filtering**: Ability to implement WAF-like capabilities at the proxy layer
+- **Authentication**: API key validation and access control at the proxy level
+
+### 3. Operational Flexibility
+
+- **Independent Updates**: Components can be updated separately
+- **Certificate Management**: SSL certificates can be renewed without affecting ML components
+- **API Customization**: New endpoints can be added without modifying vLLM
+- **Error Handling**: Sophisticated error management and client-friendly responses
+
+### 4. Scaling Capabilities
+
+- **Horizontal Scaling**: Proxy can route to multiple vLLM instances
+- **Load Distribution**: Sophisticated routing based on model type or request priority
+- **Vertical Scaling**: Support for multi-GPU setups with tensor and pipeline parallelism
+- **Future Growth**: Architecture supports both single-instance and clustered deployments
+
+### 5. Performance Optimization
+
+- **Request Buffering**: NGINX can buffer requests and responses for improved performance
+- **Connection Management**: Better handling of slow clients and network issues
+- **Resource Efficiency**: ML component focuses purely on inference, maximizing GPU utilization
 
 ## Intelligent Timeout Management
 

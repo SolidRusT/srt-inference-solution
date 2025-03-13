@@ -60,159 +60,243 @@ function calculateTimeout(req) {
   return Math.min(timeout, maxTimeout);
 }
 
-// Utility function for proxying requests to vLLM
+// Update the vLLM proxy function to handle vLLM being down better
 function proxyToVLLM(path, req, res, transformResponse = null) {
   try {
-    // Determine if this is a GET or POST request
-    const isGet = !req.body || Object.keys(req.body).length === 0;
-    const method = isGet ? 'GET' : 'POST';
-    
-    // Calculate appropriate timeout for this request
-    const timeout = calculateTimeout(req);
-    
-    // Set up the options for the request
-    const options = {
-      hostname: vllmHost,
-      port: vllmPort,
-      path: path,
-      method: method,
-      timeout: timeout,
-      headers: {
-        'Accept': 'application/json'
-      }
-    };
-
-    let postData = null;
-    if (!isGet) {
-      postData = JSON.stringify(req.body);
-      options.headers['Content-Type'] = 'application/json';
-      options.headers['Content-Length'] = Buffer.byteLength(postData);
-    }
-
-    // Handle streaming responses
-    const isStreaming = !isGet && req.body && req.body.stream === true;
-
-    // Create the request to vLLM
-    const vllmReq = http.request(options, (vllmRes) => {
-      let data = '';
-      
-      // Set headers from vLLM response
-      Object.keys(vllmRes.headers).forEach(key => {
-        res.setHeader(key, vllmRes.headers[key]);
-      });
-      
-      vllmRes.on('data', (chunk) => {
-        // For streaming responses, send each chunk immediately
-        if (isStreaming) {
-          res.write(chunk);
-        } else {
-          data += chunk;
+    // Check vLLM status first
+    const exec = require('child_process').exec;
+    exec('/usr/local/bin/monitor-vllm.sh', (error, statusOutput, stderr) => {
+      try {
+        // If we can't even check status, that's a problem
+        if (error) {
+          console.error(`Failed to check vLLM status: ${error.message}`);
+          return res.status(503).json({
+            error: 'vLLM service unavailable',
+            message: 'Unable to check vLLM status',
+            status: 'loading',
+            logs: 'Unable to check vLLM logs',
+            retry_after: 30
+          });
         }
-      });
-      
-      vllmRes.on('end', () => {
-        if (!isStreaming) {
-          try {
-            if (data) {
-              const responseData = JSON.parse(data);
-              if (transformResponse) {
-                // Apply custom transformation if provided
-                const transformedData = transformResponse(responseData);
-                res.status(vllmRes.statusCode).json(transformedData);
-              } else {
-                res.status(vllmRes.statusCode).json(responseData);
+
+        const vllmStatus = JSON.parse(statusOutput);
+        
+        // If vLLM API is not available but service is running, it's probably loading
+        if (vllmStatus.api_status === "unavailable" && vllmStatus.service_status === "active") {
+          console.log(`vLLM is still loading. Container: ${vllmStatus.container_status}, Service: ${vllmStatus.service_status}`);
+          return res.status(503).json({
+            error: 'vLLM service is loading',
+            message: 'The model is still loading, please try again later',
+            status: 'loading',
+            logs: vllmStatus.last_logs,
+            started_at: vllmStatus.started_at,
+            retry_after: 30
+          });
+        }
+        
+        // If vLLM service is inactive, it may have crashed
+        if (vllmStatus.service_status !== "active") {
+          console.error(`vLLM service is not active: ${vllmStatus.service_status}`);
+          return res.status(503).json({
+            error: 'vLLM service is down',
+            message: 'The inference engine is currently unavailable',
+            status: 'down',
+            logs: vllmStatus.last_logs,
+            retry_after: 60
+          });
+        }
+        
+        // If we get here, the service is running but we can continue with the regular proxy
+        // Determine if this is a GET or POST request
+        const isGet = !req.body || Object.keys(req.body).length === 0;
+        const method = isGet ? 'GET' : 'POST';
+        
+        // Calculate appropriate timeout for this request
+        const timeout = calculateTimeout(req);
+        
+        // Set up the options for the request
+        const options = {
+          hostname: vllmHost,
+          port: vllmPort,
+          path: path,
+          method: method,
+          timeout: timeout,
+          headers: {
+            'Accept': 'application/json'
+          }
+        };
+
+        let postData = null;
+        if (!isGet) {
+          postData = JSON.stringify(req.body);
+          options.headers['Content-Type'] = 'application/json';
+          options.headers['Content-Length'] = Buffer.byteLength(postData);
+        }
+
+        // Handle streaming responses
+        const isStreaming = !isGet && req.body && req.body.stream === true;
+
+        // Create the request to vLLM
+        const vllmReq = http.request(options, (vllmRes) => {
+          let data = '';
+          
+          // Set headers from vLLM response
+          Object.keys(vllmRes.headers).forEach(key => {
+            res.setHeader(key, vllmRes.headers[key]);
+          });
+          
+          vllmRes.on('data', (chunk) => {
+            // For streaming responses, send each chunk immediately
+            if (isStreaming) {
+              res.write(chunk);
+            } else {
+              data += chunk;
+            }
+          });
+          
+          vllmRes.on('end', () => {
+            if (!isStreaming) {
+              try {
+                if (data) {
+                  const responseData = JSON.parse(data);
+                  if (transformResponse) {
+                    // Apply custom transformation if provided
+                    const transformedData = transformResponse(responseData);
+                    res.status(vllmRes.statusCode).json(transformedData);
+                  } else {
+                    res.status(vllmRes.statusCode).json(responseData);
+                  }
+                } else {
+                  res.status(vllmRes.statusCode).end();
+                }
+              } catch (error) {
+                console.error(`Error parsing vLLM response: ${error}`);
+                res.status(500).json({ 
+                  error: 'Failed to parse vLLM response',
+                  details: error.message
+                });
               }
             } else {
-              res.status(vllmRes.statusCode).end();
+              res.end();
             }
-          } catch (error) {
-            console.error(`Error parsing vLLM response: ${error}`);
-            res.status(500).json({ 
-              error: 'Failed to parse vLLM response',
-              details: error.message
-            });
-          }
-        } else {
-          res.end();
+          });
+        });
+
+        vllmReq.on('error', (error) => {
+          console.error(`Error calling vLLM service at ${path}: ${error}`);
+          res.status(503).json({ 
+            error: 'vLLM service unavailable', 
+            details: error.message,
+            path: path,
+            retry_after: 10
+          });
+        });
+
+        vllmReq.on('timeout', () => {
+          vllmReq.destroy();
+          res.status(504).json({ 
+            error: 'vLLM service timeout', 
+            message: 'The inference request took too long to process',
+            path: path,
+            retry_after: 30
+          });
+        });
+
+        if (postData) {
+          vllmReq.write(postData);
         }
-      });
+        
+        vllmReq.end();
+        
+      } catch (innerError) {
+        console.error(`Error processing vLLM status: ${innerError}`);
+        res.status(500).json({ 
+          error: 'Internal server error', 
+          details: innerError.message 
+        });
+      }
     });
-
-    vllmReq.on('error', (error) => {
-      console.error(`Error calling vLLM service at ${path}: ${error}`);
-      res.status(503).json({ 
-        error: 'vLLM service unavailable', 
-        details: error.message,
-        path: path
-      });
-    });
-
-    vllmReq.on('timeout', () => {
-      vllmReq.destroy();
-      res.status(504).json({ 
-        error: 'vLLM service timeout', 
-        path: path
-      });
-    });
-
-    if (postData) {
-      vllmReq.write(postData);
-    }
-    
-    vllmReq.end();
   } catch (error) {
     console.error(`Error in proxy to vLLM: ${error}`);
-    res.status(500).json({ error: 'Internal server error', details: error.message });
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
   }
 }
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  // Check if vLLM is running by making a request to its health endpoint
-  const options = {
-    hostname: vllmHost,
-    port: vllmPort,
-    path: '/health',
-    method: 'GET',
-    timeout: 5000
-  };
-
-  const vllmReq = http.request(options, (vllmRes) => {
-    if (vllmRes.statusCode === 200) {
-      res.status(200).json({ 
-        status: 'ok', 
-        message: 'API and vLLM service are healthy',
+  // Use the server-side health check script to get detailed status
+  const exec = require('child_process').exec;
+  exec('/usr/local/bin/health-check.sh', (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Health check script error: ${error}`);
+      return res.status(503).json({ 
+        status: 'error', 
+        message: 'Health check script failed',
         version: appVersion
       });
-    } else {
+    }
+    
+    try {
+      // Parse the JSON output from the script
+      const healthData = JSON.parse(stdout);
+      
+      // Set the appropriate HTTP status code
+      if (healthData.status === 'error') {
+        res.status(503);
+      } else {
+        res.status(200);
+      }
+      
+      // Add version to the response
+      healthData.version = appVersion;
+      
+      // Return the health check data
+      res.json(healthData);
+    } catch (e) {
+      console.error(`Failed to parse health check output: ${e.message}`);
       res.status(503).json({ 
         status: 'error', 
-        message: 'vLLM service is not healthy',
+        message: 'Invalid health check output',
         version: appVersion
       });
     }
   });
+});
 
-  vllmReq.on('error', (e) => {
-    console.error(`vLLM health check failed: ${e.message}`);
-    res.status(503).json({ 
-      status: 'error', 
-      message: 'vLLM service unavailable',
-      error: e.message,
-      version: appVersion
-    });
+// vLLM status endpoint
+app.get('/status', (req, res) => {
+  const exec = require('child_process').exec;
+  exec('/usr/local/bin/monitor-vllm.sh', (error, stdout, stderr) => {
+    if (error) {
+      console.error(`vLLM status check error: ${error}`);
+      return res.status(500).json({
+        error: 'Failed to check vLLM status',
+        details: error.message
+      });
+    }
+    
+    try {
+      // Parse the JSON output from the script
+      const statusData = JSON.parse(stdout);
+      
+      // Add timestamps and additional info
+      statusData.timestamp = new Date().toISOString();
+      statusData.api_version = appVersion;
+      statusData.model_id = process.env.MODEL_ID || 'Not specified';
+      
+      // Return the status data
+      res.status(200).json(statusData);
+    } catch (e) {
+      console.error(`Failed to parse vLLM status output: ${e.message}`);
+      res.status(500).json({
+        error: 'Invalid vLLM status output',
+        details: e.message
+      });
+    }
   });
-
-  vllmReq.on('timeout', () => {
-    vllmReq.destroy();
-    res.status(503).json({ 
-      status: 'error', 
-      message: 'vLLM service timeout',
-      version: appVersion
-    });
-  });
-
-  vllmReq.end();
 });
 
 // Root endpoint
