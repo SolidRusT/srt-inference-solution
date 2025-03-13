@@ -81,6 +81,18 @@ function proxyToVLLM(path, req, res, transformResponse = null) {
 
         const vllmStatus = JSON.parse(statusOutput);
         
+        // Check if GPU is enabled
+        if (vllmStatus.gpu_enabled === false) {
+          // When GPU is disabled, provide a clear message
+          console.log('vLLM functionality is disabled because GPU support is turned off');
+          return res.status(503).json({
+            error: 'vLLM service disabled',
+            message: 'GPU support is disabled. vLLM functionality is not available.',
+            status: 'disabled',
+            gpu_enabled: false
+          });
+        }
+        
         // If vLLM API is not available but service is running, it's probably loading
         if (vllmStatus.api_status === "unavailable" && vllmStatus.service_status === "active") {
           console.log(`vLLM is still loading. Container: ${vllmStatus.container_status}, Service: ${vllmStatus.service_status}`);

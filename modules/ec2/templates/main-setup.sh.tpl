@@ -79,14 +79,21 @@ docker pull vllm/vllm-openai:latest || echo "Failed to pull vLLM image but conti
 aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $(aws sts get-caller-identity --query 'Account' --output text).dkr.ecr.$AWS_REGION.amazonaws.com
 docker pull $(aws sts get-caller-identity --query 'Account' --output text).dkr.ecr.$AWS_REGION.amazonaws.com/inference-app-production:latest || echo "Failed to pull inference app image but continuing..."
 
-# Create a cron job to check for updates every hour and monitor vLLM
-cat > /etc/cron.d/inference-maintenance << 'EOCRON'
+# Create a cron job to check for updates every hour and monitor vLLM if GPU is enabled
+if [ "$USE_GPU" = "true" ]; then
+  cat > /etc/cron.d/inference-maintenance << 'EOCRON'
 # Update inference app image hourly
 0 * * * * root /usr/local/bin/update-inference-app.sh > /dev/null 2>&1
 
 # Check vLLM health every 5 minutes and restart if needed
 */5 * * * * root /usr/local/bin/monitor-vllm.sh > /tmp/vllm-status.json 2>&1 && if grep -q '"api_status": "unavailable"' /tmp/vllm-status.json; then /usr/local/bin/restart-vllm.sh; fi
 EOCRON
+else
+  cat > /etc/cron.d/inference-maintenance << 'EOCRON'
+# Update inference app image hourly
+0 * * * * root /usr/local/bin/update-inference-app.sh > /dev/null 2>&1
+EOCRON
+fi
 
 # Set proper permissions
 chmod 0644 /etc/cron.d/inference-maintenance
@@ -112,19 +119,31 @@ if ! systemctl start inference-app; then
   systemctl restart inference-app || echo "Second attempt to start inference-app failed"
 fi
 
-# Start vLLM service
-echo "Starting vLLM service..."
-if ! systemctl start vllm; then
-  echo "Failed to start vLLM service, checking logs:"
-  journalctl -u vllm --no-pager -n 50
-  echo "Will try again after a short wait..."
-  sleep 10
-  systemctl restart vllm || echo "Second attempt to start vLLM failed"
+# Start vLLM service only if using GPU
+if [ "$USE_GPU" = "true" ]; then
+  echo "Starting vLLM service..."
+  if ! systemctl start vllm; then
+    echo "Failed to start vLLM service, checking logs:"
+    journalctl -u vllm --no-pager -n 50
+    echo "Will try again after a short wait..."
+    sleep 10
+    systemctl restart vllm || echo "Second attempt to start vLLM failed"
+  fi
+else
+  echo "GPU is disabled, not starting vLLM service"
+  # Disable the vLLM service to prevent auto-start attempts
+  systemctl disable vllm
+  echo "vLLM service disabled - it will not be available in non-GPU mode"
 fi
 
-# Run vLLM test script to check status
-echo "===== Running vLLM test script ====="
-/usr/local/bin/test-vllm.sh
+# Run vLLM test script to check status only if GPU is enabled
+if [ "$USE_GPU" = "true" ]; then
+  echo "===== Running vLLM test script ====="
+  /usr/local/bin/test-vllm.sh
+else
+  echo "===== Skipping vLLM test - GPU disabled ====="
+  echo "vLLM will not be available in non-GPU mode"
+fi
 
 # Install CloudWatch agent for monitoring
 echo "===== Installing monitoring agents ====="
@@ -229,16 +248,28 @@ sleep 5
 echo "Starting inference-app service after reboot..."
 systemctl start inference-app
 
-# Start vLLM
-echo "Starting vLLM service after reboot..."
-systemctl start vllm
-
-# Wait a bit more
-sleep 10
-
-# Run the test script to verify everything
-echo "Running post-reboot vLLM test..."
-/usr/local/bin/test-vllm.sh > /var/log/post-reboot-vllm-test.log 2>&1
+# Start vLLM only if GPU is enabled
+if [ -f /opt/inference/config.env ]; then
+  source /opt/inference/config.env
+  if [ "$USE_GPU" = "true" ]; then
+    echo "Starting vLLM service after reboot..."
+    systemctl start vllm
+    
+    # Wait a bit more
+    sleep 10
+    
+    # Run the test script to verify everything
+    echo "Running post-reboot vLLM test..."
+    /usr/local/bin/test-vllm.sh > /var/log/post-reboot-vllm-test.log 2>&1
+  else
+    echo "GPU is disabled, not starting vLLM service after reboot"
+    # Ensure vLLM is disabled
+    systemctl disable vllm
+  fi
+else
+  echo "Config file not found, falling back to no vLLM"
+  systemctl disable vllm
+fi
 
 # Check final status
 echo "Final service status after reboot:"

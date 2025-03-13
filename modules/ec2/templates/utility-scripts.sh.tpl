@@ -29,9 +29,21 @@ chmod +x /usr/local/bin/get-hf-token.sh
 echo "Testing HuggingFace token retrieval..."
 /usr/local/bin/get-hf-token.sh || echo "WARNING: Error retrieving HuggingFace token, but continuing anyway"
 
-# Create script to test vLLM
+# Create script to test vLLM (with GPU check)
 cat > /usr/local/bin/test-vllm.sh << 'EOL'
 #!/bin/bash
+
+# Check if we're running in non-GPU mode
+if [ -f /opt/inference/config.env ]; then
+  source /opt/inference/config.env
+  if [ "$USE_GPU" != "true" ]; then
+    echo "==== vLLM Test Script ===="
+    echo "GPU support is disabled in configuration."
+    echo "vLLM service is not available in non-GPU mode."
+    echo "==== End of vLLM Test ===="
+    exit 0
+  fi
+fi
 
 echo "==== vLLM Test Script ===="
 echo "Checking for HuggingFace token..."
@@ -39,7 +51,7 @@ HF_TOKEN=$(/usr/local/bin/get-hf-token.sh)
 if [ -z "$HF_TOKEN" ]; then
   echo "ERROR: No HuggingFace token available!"
 else
-  echo "HuggingFace token found. First few characters: $${HF_TOKEN:0:4}..."
+  echo "HuggingFace token found. First few characters: ${HF_TOKEN:0:4}..."
 fi
 
 echo "Checking vLLM service status..."
@@ -62,6 +74,42 @@ chmod +x /usr/local/bin/test-vllm.sh
 cat > /usr/local/bin/health-check.sh << 'EOL'
 #!/bin/bash
 
+# Check if we're running in non-GPU mode
+if [ -f /opt/inference/config.env ]; then
+  source /opt/inference/config.env
+  if [ "$USE_GPU" != "true" ]; then
+    # In non-GPU mode, just check if the API is running
+    api_status=$(systemctl is-active inference-app)
+    
+    if [ "$api_status" = "active" ]; then
+      # API is running
+      cat << EOF
+{
+  "status": "ok",
+  "message": "API is healthy (vLLM disabled in non-GPU mode)",
+  "vllm_status": "disabled",
+  "api_status": "healthy",
+  "gpu_enabled": false
+}
+EOF
+      exit 0
+    else
+      # API is not running
+      cat << EOF
+{
+  "status": "error",
+  "message": "API service is not running",
+  "vllm_status": "disabled",
+  "api_status": "unavailable",
+  "gpu_enabled": false
+}
+EOF
+      exit 1
+    fi
+  fi
+fi
+
+# For GPU mode - regular checks
 # Check if both services are running
 vllm_status=$(systemctl is-active vllm)
 api_status=$(systemctl is-active inference-app)
@@ -82,7 +130,8 @@ if [ "$api_status" = "active" ]; then
   "status": "ok",
   "message": "API and vLLM service are healthy",
   "vllm_status": "healthy",
-  "api_status": "healthy"
+  "api_status": "healthy",
+  "gpu_enabled": true
 }
 EOF
     exit 0
@@ -97,7 +146,8 @@ EOF
   "message": "API is healthy but vLLM service is not responding",
   "vllm_status": "unavailable",
   "api_status": "healthy",
-  "vllm_info": $vllm_info
+  "vllm_info": $vllm_info,
+  "gpu_enabled": true
 }
 EOF
     # Return status 200 since API is up
@@ -110,7 +160,8 @@ else
   "status": "error",
   "message": "API service is not running",
   "vllm_status": "$([ "$vllm_api_healthy" = "true" ] && echo "healthy" || echo "unavailable")",
-  "api_status": "unavailable"
+  "api_status": "unavailable",
+  "gpu_enabled": true
 }
 EOF
   # Return error status
@@ -173,6 +224,25 @@ cat > /usr/local/bin/monitor-vllm.sh << 'EOL'
 
 # This script checks the status of vLLM and returns useful information
 
+# Check if we're running in non-GPU mode
+if [ -f /opt/inference/config.env ]; then
+  source /opt/inference/config.env
+  if [ "$USE_GPU" != "true" ]; then
+    # Return non-GPU status
+    cat << EOF
+{
+  "service_status": "disabled",
+  "container_status": "not_running",
+  "api_status": "disabled",
+  "started_at": "N/A",
+  "last_logs": "vLLM is disabled in non-GPU mode",
+  "gpu_enabled": false
+}
+EOF
+    exit 0
+  fi
+fi
+
 # Check if vLLM service is active
 VLLM_SERVICE_STATUS=$(systemctl is-active vllm)
 
@@ -203,7 +273,8 @@ cat << EOF
   "container_status": "$VLLM_CONTAINER_STATUS",
   "api_status": "$VLLM_API_STATUS",
   "started_at": "$CONTAINER_STARTED",
-  "last_logs": "$LAST_LOGS"
+  "last_logs": "$LAST_LOGS",
+  "gpu_enabled": true
 }
 EOF
 EOL
