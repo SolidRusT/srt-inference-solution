@@ -176,6 +176,9 @@ locals {
     admin_email             = var.admin_email
     timestamp               = var.user_data_timestamp
     instance_version        = var.instance_version # Added for version tracking in logs
+    tensor_parallel_size    = var.tensor_parallel_size
+    pipeline_parallel_size  = var.pipeline_parallel_size
+    tool_call_parser        = var.tool_call_parser
   })
 }
 
