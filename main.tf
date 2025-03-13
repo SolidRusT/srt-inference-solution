@@ -47,6 +47,9 @@ module "ec2" {
   model_id          = var.model_id
   max_model_len     = var.max_model_len
   gpu_memory_utilization = var.gpu_memory_utilization
+  tensor_parallel_size = var.tensor_parallel_size
+  pipeline_parallel_size = var.pipeline_parallel_size
+  tool_call_parser   = var.tool_call_parser
   vllm_image_tag    = var.vllm_image_tag
   hf_token_parameter_name = var.hf_token_parameter_name
   region            = var.region

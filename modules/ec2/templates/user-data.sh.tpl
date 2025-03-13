@@ -205,7 +205,9 @@ cat >> /etc/systemd/system/vllm.service << EOT
     --device auto \\
     --max-model-len ${max_model_len} \\
     --gpu-memory-utilization ${gpu_memory_utilization} \\
-    --tool-call-parser hermes'
+    --tensor-parallel-size ${tensor_parallel_size} \\
+    --pipeline-parallel-size ${pipeline_parallel_size} \\
+    --tool-call-parser ${tool_call_parser}'
 
 [Install]
 WantedBy=multi-user.target

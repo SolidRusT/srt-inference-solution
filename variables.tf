@@ -110,6 +110,24 @@ variable "gpu_memory_utilization" {
   default     = 0.98
 }
 
+variable "tensor_parallel_size" {
+  description = "Number of GPUs to use for tensor parallelism (defaults to 1 for single GPU)"
+  type        = number
+  default     = 1
+}
+
+variable "pipeline_parallel_size" {
+  description = "Number of pipeline stages for pipeline parallelism (defaults to 1)"
+  type        = number
+  default     = 1
+}
+
+variable "tool_call_parser" {
+  description = "The parser to use for function calling in vLLM (options: granite-20b-fc, granite, hermes, internlm, jamba, llama3_json, mistral, pythonic)"
+  type        = string
+  default     = "hermes"
+}
+
 variable "vllm_image_tag" {
   description = "Docker image tag for vLLM"
   type        = string
