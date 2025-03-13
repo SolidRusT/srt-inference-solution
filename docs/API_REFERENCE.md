@@ -108,7 +108,7 @@ POST /v1/chat/completions
 
 ```json
 {
-  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "model": "<model-name>",
   "messages": [
     { "role": "system", "content": "You are a helpful assistant." },
     { "role": "user", "content": "Tell me about AWS EC2." }
@@ -126,7 +126,7 @@ POST /v1/chat/completions
   "id": "cmpl-7a2e8938ebc44755bdcc45d37df1b106",
   "object": "chat.completion",
   "created": 1710323152,
-  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "model": "<model-name>",
   "choices": [
     {
       "index": 0,
@@ -164,7 +164,7 @@ POST /v1/completions
 
 ```json
 {
-  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "model": "<model-name>",
   "prompt": "Write a short paragraph about AWS EC2",
   "max_tokens": 256,
   "temperature": 0.7
@@ -178,7 +178,7 @@ POST /v1/completions
   "id": "cmpl-abc123def456",
   "object": "text.completion",
   "created": 1710325001,
-  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "model": "<model-name>",
   "choices": [
     {
       "text": "AWS EC2 (Elastic Compute Cloud) is Amazon's flagship cloud computing service that allows users to rent virtual computers...",
@@ -206,7 +206,7 @@ POST /tokenize
 
 ```json
 {
-  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "model": "<model-name>",
   "messages": [
     { "role": "user", "content": "Hello, how are you?" }
   ]
@@ -217,7 +217,7 @@ POST /tokenize
 
 ```json
 {
-  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "model": "<model-name>",
   "prompt": "Hello, how are you?"
 }
 ```
@@ -242,7 +242,7 @@ POST /detokenize
 
 ```json
 {
-  "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+  "model": "<model-name>",
   "tokens": [1, 23, 5, 7890, 12, 35, 23, 789]
 }
 ```
@@ -284,7 +284,7 @@ POST /v1/embeddings
 
 ```json
 {
-  "model": "solidrust/embedding-model",
+  "model": "<embedding-model-name>",
   "input": "Text to embed",
   "encoding_format": "float"
 }
@@ -296,7 +296,7 @@ POST /v1/embeddings
 {
   "object": "embedding",
   "embedding": [0.1, 0.2, -0.3, 0.4, ...],
-  "model": "solidrust/embedding-model"
+  "model": "<embedding-model-name>"
 }
 ```
 
@@ -312,7 +312,7 @@ POST /rerank
 
 ```json
 {
-  "model": "solidrust/rerank-model",
+  "model": "<rerank-model-name>",
   "query": "How does AWS EC2 pricing work?",
   "documents": [
     "EC2 instances are billed by the hour with different rates for different instance types.",
@@ -327,7 +327,7 @@ POST /rerank
 
 ```json
 {
-  "model": "solidrust/rerank-model",
+  "model": "<rerank-model-name>",
   "results": [
     {
       "document": "AWS provides different pricing models including On-Demand, Reserved, and Spot instances.",
@@ -355,7 +355,7 @@ POST /score
 
 ```json
 {
-  "model": "solidrust/score-model",
+  "model": "<score-model-name>",
   "text_1": "How does AWS EC2 pricing work?",
   "text_2": "EC2 instances are billed by the hour with different rates for different instance types."
 }
@@ -365,7 +365,7 @@ POST /score
 
 ```json
 {
-  "model": "solidrust/score-model",
+  "model": "<score-model-name>",
   "score": 0.76
 }
 ```
@@ -433,7 +433,7 @@ To build and run the API using Docker:
 2. Run the container:
 
    ```bash
-   docker run -p 8080:8080 -e VLLM_HOST=host.docker.internal inference-app
+   docker run -p 8080:8080 -e VLLM_HOST=host.docker.internal -e MODEL_ID="<your-model-id>" inference-app
    ```
 
 3. The server will be available at `http://localhost:8080`
@@ -467,13 +467,43 @@ curl -X POST \
   http://localhost:8080/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "solidrust/Hermes-3-Llama-3.1-8B-AWQ",
+    "model": "<your-model-id>",
     "messages": [
       {"role": "user", "content": "Explain what AWS EC2 is in one paragraph."}
     ],
     "max_tokens": 100
   }'
 ```
+
+## Changing Models
+
+To change the model used by the inference solution:
+
+1. Edit the `terraform.tfvars` file and modify the `model_id` parameter:
+
+   ```hcl
+   # vLLM Configuration
+   model_id = "new-model/name-here"
+   ```
+
+2. Adjust `max_model_len` based on the context window size of your chosen model.
+
+3. If needed, change the GPU instance type by modifying the `gpu_instance_type` parameter.
+
+4. Increment the `ec2_instance_version` to force a replacement of the EC2 instance:
+
+   ```hcl
+   # Deployment version - increment to force replacement of EC2 instance
+   ec2_instance_version = 3
+   ```
+
+5. Apply the changes with Terraform:
+
+   ```bash
+   terraform apply
+   ```
+
+This will create a new EC2 instance with the updated model configuration, while maintaining the same API endpoints and functionality.
 
 ## Future Enhancements
 
