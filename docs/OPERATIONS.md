@@ -93,7 +93,7 @@ domain_name = "your-domain.com"
 create_route53_records = true
 
 # Admin settings
-allowed_admin_ips = ["your-ip/32"]
+allowed_cidr_blocks = ["your-ip/32"]
 email_address = "admin@your-domain.com"
 
 # EC2 instance settings

@@ -13,7 +13,7 @@ create_route53_records = true
 route53_zone_id        = "Z01814691UALOFO3WZ9I2"
 
 # Admin settings
-allowed_admin_ips = ["24.86.211.228/32"]
+allowed_cidr_blocks = ["24.86.211.228/32"]
 email_address     = "admin@live.ca.obenv.net"
 
 # EC2 instance settings

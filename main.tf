@@ -53,7 +53,7 @@ module "ec2" {
   vllm_image_tag    = var.vllm_image_tag
   hf_token_parameter_name = var.hf_token_parameter_name
   region            = var.region
-  allowed_cidr_blocks = concat(["0.0.0.0/0"], var.allowed_admin_ips)
+  allowed_cidr_blocks = var.allowed_cidr_blocks
   ecr_repository_url = module.ecr.repository_url
   enable_https      = var.enable_https && var.create_route53_records
   certificate_arn   = ""

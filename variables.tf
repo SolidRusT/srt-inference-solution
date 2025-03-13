@@ -50,7 +50,7 @@ variable "email_address" {
   default     = "admin@example.com"
 }
 
-variable "allowed_admin_ips" {
+variable "allowed_cidr_blocks" {
   description = "List of CIDRs that can access the load balancer endpoints (e.g. your office or home IP)"
   type        = list(string)
   default     = []
