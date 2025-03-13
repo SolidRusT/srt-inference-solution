@@ -24,7 +24,7 @@ key_name          = "ob-live-open-inference-oregon"
 app_port          = 8080
 
 # Deployment version - increment to force replacement of EC2 instance
-ec2_instance_version = 1
+ec2_instance_version = 2
 
 # vLLM Configuration
 vllm_port              = 8000
