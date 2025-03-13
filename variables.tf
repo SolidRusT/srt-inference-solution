@@ -62,6 +62,12 @@ variable "instance_type" {
   default     = "t3.small"
 }
 
+variable "root_volume_size" {
+  description = "Size of the root volume in GB"
+  type        = number
+  default     = 30
+}
+
 variable "use_gpu_instance" {
   description = "Whether to use a GPU instance for inference"
   type        = bool

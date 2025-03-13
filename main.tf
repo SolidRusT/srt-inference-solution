@@ -61,6 +61,7 @@ module "ec2" {
   admin_email       = var.email_address
   user_data_timestamp = local.deployment_timestamp
   instance_version  = var.ec2_instance_version  # Pass through the instance version
+  root_volume_size  = var.root_volume_size
   tags              = local.tags
 }
 

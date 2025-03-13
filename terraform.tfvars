@@ -18,13 +18,14 @@ email_address     = "admin@live.ca.obenv.net"
 
 # EC2 instance settings
 instance_type     = "t3.small"
+root_volume_size  = 200  # default is 30
 use_gpu_instance  = true
-gpu_instance_type = "g6.12xlarge"
+gpu_instance_type = "g6.12xlarge" # smallest is g6.xlarge
 key_name          = "ob-live-open-inference-oregon"
 app_port          = 8080
 
 # Deployment version - increment to force replacement of EC2 instance
-ec2_instance_version = 3
+ec2_instance_version = 1
 
 # vLLM Configuration
 vllm_port              = 8000
