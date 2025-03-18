@@ -33,6 +33,7 @@ resource "aws_s3_object" "utility_scripts" {
     vllm_port               = var.vllm_port
     ecr_repository_url      = var.ecr_repository_url
     hf_token_parameter_name = var.hf_token_parameter_name
+    scripts_bucket          = aws_s3_bucket.scripts.id
   })
   content_type = "text/x-shellscript"
 }
