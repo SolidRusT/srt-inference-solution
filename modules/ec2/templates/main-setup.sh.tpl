@@ -75,7 +75,10 @@ echo "Logging into ECR..."
 
 # Pull the images before service startup
 echo "Pulling Docker images..."
-docker pull vllm/vllm-openai:latest || echo "Failed to pull vLLM image but continuing..."
+if [ "$USE_GPU" = "true" ]; then
+  docker pull vllm/vllm-openai:latest || echo "Failed to pull vLLM image but continuing..."
+fi
+
 aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $(aws sts get-caller-identity --query 'Account' --output text).dkr.ecr.$AWS_REGION.amazonaws.com
 docker pull $(aws sts get-caller-identity --query 'Account' --output text).dkr.ecr.$AWS_REGION.amazonaws.com/inference-app-production:latest || echo "Failed to pull inference app image but continuing..."
 
@@ -87,11 +90,17 @@ if [ "$USE_GPU" = "true" ]; then
 
 # Check vLLM health every 5 minutes and restart if needed
 */5 * * * * root /usr/local/bin/monitor-vllm.sh > /tmp/vllm-status.json 2>&1 && if grep -q '"api_status": "unavailable"' /tmp/vllm-status.json; then /usr/local/bin/restart-vllm.sh; fi
+
+# Run service check every 15 minutes to ensure both services are running
+*/15 * * * * root /var/lib/cloud/scripts/per-boot/ensure-services.sh > /dev/null 2>&1
 EOCRON
 else
   cat > /etc/cron.d/inference-maintenance << 'EOCRON'
 # Update inference app image hourly
 0 * * * * root /usr/local/bin/update-inference-app.sh > /dev/null 2>&1
+
+# Run service check every 15 minutes to ensure inference-app is running
+*/15 * * * * root /var/lib/cloud/scripts/per-boot/ensure-services.sh > /dev/null 2>&1
 EOCRON
 fi
 
@@ -99,51 +108,24 @@ fi
 chmod 0644 /etc/cron.d/inference-maintenance
 
 # Enable and start the services with more robust error handling
-echo "===== Starting services ====="
+echo "===== Initializing services ====="
 systemctl daemon-reload
 
-# Enable services (but don't start yet)
+# Enable services (but don't start yet - will be handled by per-boot script)
 echo "Enabling vLLM service..."
-systemctl enable vllm
-echo "Enabling inference-app service..."
-systemctl enable inference-app
-
-# Start inference app independently
-echo "Starting inference-app service..."
-if ! systemctl start inference-app; then
-  echo "Failed to start inference-app service, checking logs:"
-  journalctl -u inference-app --no-pager -n 50
-  docker logs inference-app || echo "No inference-app container logs available"
-  echo "Will try again after a short wait..."
-  sleep 10
-  systemctl restart inference-app || echo "Second attempt to start inference-app failed"
-fi
-
-# Start vLLM service only if using GPU
 if [ "$USE_GPU" = "true" ]; then
-  echo "Starting vLLM service..."
-  if ! systemctl start vllm; then
-    echo "Failed to start vLLM service, checking logs:"
-    journalctl -u vllm --no-pager -n 50
-    echo "Will try again after a short wait..."
-    sleep 10
-    systemctl restart vllm || echo "Second attempt to start vLLM failed"
-  fi
+  systemctl enable vllm
 else
-  echo "GPU is disabled, not starting vLLM service"
-  # Disable the vLLM service to prevent auto-start attempts
+  # Disable the vLLM service to prevent auto-start attempts in non-GPU mode
   systemctl disable vllm
   echo "vLLM service disabled - it will not be available in non-GPU mode"
 fi
 
-# Run vLLM test script to check status only if GPU is enabled
-if [ "$USE_GPU" = "true" ]; then
-  echo "===== Running vLLM test script ====="
-  /usr/local/bin/test-vllm.sh
-else
-  echo "===== Skipping vLLM test - GPU disabled ====="
-  echo "vLLM will not be available in non-GPU mode"
-fi
+echo "Enabling inference-app service..."
+systemctl enable inference-app
+
+# Note: The actual service starting is now handled by the per-boot script
+# This improved approach ensures proper ordering and handles potential race conditions
 
 # Install CloudWatch agent for monitoring
 echo "===== Installing monitoring agents ====="
@@ -229,6 +211,7 @@ ls -la /var/lib/cloud/scripts/per-boot/
 
 echo "\n=== Recent Boot Log ==="
 tail -n 20 /var/log/post-reboot-setup.log 2>/dev/null || echo "No post-reboot log available"
+tail -n 20 /var/log/ensure-services.log 2>/dev/null || echo "No ensure-services log available"
 
 echo "\n=== Service Status Check Completed ==="
 EOCS
@@ -246,13 +229,27 @@ cat > /var/lib/cloud/scripts/per-boot/post-reboot-setup.sh << 'EOB'
 exec > >(tee /var/log/post-reboot-setup.log) 2>&1
 echo "Running post-reboot setup at $$(date)"
 
-# Check if NVIDIA drivers are loaded
-if ! nvidia-smi > /dev/null 2>&1; then
-  echo "NVIDIA drivers not loaded after reboot, trying to reload"
-  # Add actions to reload NVIDIA if needed
+# Check if NVIDIA drivers are loaded properly
+NVIDIA_ATTEMPTS=5
+NVIDIA_READY=false
+
+for i in $$(seq 1 $NVIDIA_ATTEMPTS); do
+  echo "Checking NVIDIA drivers (attempt $i/$NVIDIA_ATTEMPTS)..."
+  if nvidia-smi > /dev/null 2>&1; then
+    echo "NVIDIA drivers loaded successfully"
+    NVIDIA_READY=true
+    break
+  else
+    echo "NVIDIA drivers not loaded yet, waiting..."
+    sleep 10
+  fi
+done
+
+if [ "$NVIDIA_READY" = "false" ]; then
+  echo "WARNING: NVIDIA drivers not properly loaded after $NVIDIA_ATTEMPTS attempts"
 fi
 
-# Stop any potentially running services
+# Stop any potentially running services for clean startup
 systemctl stop inference-app
 systemctl stop vllm
 
@@ -262,37 +259,57 @@ docker rm -f vllm-service inference-app || echo "No containers to remove"
 # Wait to ensure everything is stopped
 sleep 5
 
-# Start API first for immediate availability
-echo "Starting inference-app service after reboot..."
-systemctl start inference-app
-
-# Start vLLM only if GPU is enabled
+# Source the config to determine whether to start vLLM
+GPU_ENABLED=false
 if [ -f /opt/inference/config.env ]; then
   source /opt/inference/config.env
   if [ "$USE_GPU" = "true" ]; then
-    echo "Starting vLLM service after reboot..."
-    systemctl start vllm
-    
-    # Wait a bit more
-    sleep 10
-    
-    # Run the test script to verify everything
-    echo "Running post-reboot vLLM test..."
-    /usr/local/bin/test-vllm.sh > /var/log/post-reboot-vllm-test.log 2>&1
+    GPU_ENABLED=true
+  fi
+fi
+
+if [ "$GPU_ENABLED" = "true" ] && [ "$NVIDIA_READY" = "true" ]; then
+  # Start vLLM first in GPU mode
+  echo "Starting vLLM service after reboot..."
+  systemctl start vllm
+  
+  # Wait for vLLM to be ready
+  if [ -f /usr/local/bin/wait-for-vllm.sh ]; then
+    echo "Waiting for vLLM to be fully available..."
+    /usr/local/bin/wait-for-vllm.sh || echo "WARNING: vLLM not responding after timeout"
   else
-    echo "GPU is disabled, not starting vLLM service after reboot"
-    # Ensure vLLM is disabled
-    systemctl disable vllm
+    # Fallback wait
+    echo "wait-for-vllm script not found, waiting 30 seconds instead..."
+    sleep 30
   fi
 else
-  echo "Config file not found, falling back to no vLLM"
-  systemctl disable vllm
+  if [ "$GPU_ENABLED" = "true" ]; then
+    echo "Not starting vLLM due to NVIDIA driver issues"
+  else
+    echo "Not starting vLLM as GPU support is disabled"
+  fi
+fi
+
+# Start API service
+echo "Starting inference-app service after reboot..."
+systemctl start inference-app
+
+# Run the test script to verify vLLM if applicable
+if [ "$GPU_ENABLED" = "true" ] && [ "$NVIDIA_READY" = "true" ]; then
+  echo "Running post-reboot vLLM test..."
+  if [ -f /usr/local/bin/test-vllm.sh ]; then
+    /usr/local/bin/test-vllm.sh > /var/log/post-reboot-vllm-test.log 2>&1
+  else
+    echo "vLLM test script not found"
+  fi
 fi
 
 # Check final status
 echo "Final service status after reboot:"
-systemctl status vllm --no-pager
-systemctl status inference-app --no-pager
+echo "Inference app: $$(systemctl is-active inference-app) ($$(systemctl is-enabled inference-app))"
+if [ "$GPU_ENABLED" = "true" ]; then
+  echo "vLLM service: $$(systemctl is-active vllm) ($$(systemctl is-enabled vllm))"
+fi
 docker ps
 
 echo "Post-reboot setup completed at $$(date)"

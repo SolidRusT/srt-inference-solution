@@ -14,14 +14,27 @@ cat > /usr/local/bin/get-hf-token.sh << 'EOF'
 
 # Get the HuggingFace token from SSM Parameter Store
 echo "Retrieving HuggingFace token from SSM parameter: ${hf_token_parameter_name}"
-HF_TOKEN=$(aws ssm get-parameter --name ${hf_token_parameter_name} --with-decryption --region ${aws_region} --query "Parameter.Value" --output text)
-if [ -z "$HF_TOKEN" ]; then
-  echo "WARNING: Empty HuggingFace token retrieved! Using fallback value."
-  HF_TOKEN="hf_fallback_token_for_testing"
-else
-  echo "Successfully retrieved HuggingFace token (first 3 chars): $${HF_TOKEN:0:3}..."
-fi
-echo "$HF_TOKEN"
+MAX_ATTEMPTS=3
+ATTEMPT=0
+
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+  ATTEMPT=$((ATTEMPT+1))
+  echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
+  
+  HF_TOKEN=$(aws ssm get-parameter --name ${hf_token_parameter_name} --with-decryption --region ${aws_region} --query "Parameter.Value" --output text 2>/dev/null)
+  
+  if [ -z "$HF_TOKEN" ]; then
+    echo "WARNING: Empty HuggingFace token retrieved. Retrying in 5 seconds..."
+    sleep 5
+  else
+    echo "Successfully retrieved HuggingFace token (first 3 chars): $${HF_TOKEN:0:3}..."
+    echo "$HF_TOKEN"
+    exit 0
+  fi
+done
+
+echo "WARNING: Failed to retrieve token after $MAX_ATTEMPTS attempts. Using fallback value."
+echo "hf_fallback_token_for_testing"
 EOF
 chmod +x /usr/local/bin/get-hf-token.sh
 
@@ -54,17 +67,24 @@ else
   echo "HuggingFace token found. First few characters: $${HF_TOKEN:0:4}..."
 fi
 
+echo "Checking NVIDIA drivers..."
+if command -v nvidia-smi >/dev/null 2>&1; then
+  nvidia-smi
+else
+  echo "NVIDIA tools not installed or not in PATH!"
+fi
+
 echo "Checking vLLM service status..."
 systemctl status vllm
 
 echo "Checking container status..."
-docker ps | grep vllm-service
+docker ps | grep vllm-service || echo "vLLM container not found in docker ps"
 
 echo "Testing vLLM API..."
 curl -s http://localhost:${vllm_port}/health || echo "vLLM API not responding"
 
-echo "Docker logs for vLLM:"
-docker logs vllm-service --tail 50
+echo "Docker logs for vLLM (last 50 lines):"
+docker logs vllm-service --tail 50 2>&1 || echo "No vLLM container logs available"
 
 echo "==== End of vLLM Test ===="
 EOL
@@ -191,6 +211,7 @@ cat > /usr/local/bin/wait-for-vllm.sh << 'EOL'
 
 MAX_ATTEMPTS=30
 ATTEMPT=0
+WAIT_SECONDS=10
 
 echo "Waiting for vLLM service to be available..." 
 
@@ -198,10 +219,17 @@ while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
   ATTEMPT=$((ATTEMPT+1))
   echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
   
+  # Check if the vLLM service is active
+  if ! systemctl is-active vllm >/dev/null 2>&1; then
+    echo "vLLM service is not active"
+    sleep $WAIT_SECONDS
+    continue
+  fi
+  
   # Check if the vLLM container is running
   if ! docker ps | grep -q vllm-service; then
     echo "vLLM container is not running yet"
-    sleep 10
+    sleep $WAIT_SECONDS
     continue
   fi
   
@@ -211,7 +239,7 @@ while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     exit 0
   else
     echo "vLLM service not responding yet"
-    sleep 10
+    sleep $WAIT_SECONDS
   fi
 done
 
