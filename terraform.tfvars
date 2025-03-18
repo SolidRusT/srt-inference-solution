@@ -25,7 +25,7 @@ key_name          = "ob-live-open-inference-oregon"
 app_port          = 8080
 
 # Deployment version - increment to force replacement of EC2 instance
-ec2_instance_version = 6
+ec2_instance_version = 7
 
 # Timeout Configuration
 default_proxy_timeout = 90    # Default timeout in seconds for most API operations
