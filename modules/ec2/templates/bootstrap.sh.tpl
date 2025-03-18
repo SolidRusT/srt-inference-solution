@@ -26,9 +26,15 @@ cat > /var/lib/cloud/scripts/per-boot/ensure-services.sh << 'EOSVC'
 # This script runs at every boot to ensure services are running
 
 LOG_FILE="/var/log/ensure-services.log"
-exec > >(tee $LOG_FILE) 2>&1
+CHECK_TIMESTAMP="/tmp/last-service-check"
+exec > >(tee -a $LOG_FILE) 2>&1
 
+echo "\n\n================================================="
 echo "Running service check at $(date)"
+echo "=================================================\n"
+
+# Create a timestamp for this run
+date > $CHECK_TIMESTAMP
 
 # Source config if available to check if GPU is enabled
 USE_GPU=false
@@ -133,6 +139,9 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
   fi
 done
 
+# Wait a moment to ensure services have had time to start
+sleep 5
+
 # Final service status check
 echo "=== Final Service Status ==="
 systemctl status docker --no-pager || echo "Docker service status check failed"
@@ -148,9 +157,45 @@ fi
 echo "=== Running Containers ==="
 docker ps
 
+# Check for any containers or services that might need manual restart
+if [ "$USE_GPU" = "true" ] && systemctl is-active vllm >/dev/null && ! docker ps | grep -q vllm-service; then
+  echo "vLLM service is active but container is not running. Restarting service..."
+  systemctl restart vllm
+fi
+
+if systemctl is-active inference-app >/dev/null && ! docker ps | grep -q inference-app; then
+  echo "Inference app service is active but container is not running. Restarting service..."
+  systemctl restart inference-app
+fi
+
+# Verify docker container API health
+if docker ps | grep -q inference-app; then
+  echo "Checking inference API health..."
+  if ! curl -s http://localhost:8080/health > /dev/null; then
+    echo "Inference API is not responding, restarting service..."
+    systemctl restart inference-app
+  else
+    echo "Inference API is healthy"
+  fi
+fi
+
+if [ "$USE_GPU" = "true" ] && docker ps | grep -q vllm-service; then
+  echo "Checking vLLM API health..."
+  if ! curl -s http://localhost:8000/health > /dev/null; then
+    echo "vLLM API is not responding, restarting service..."
+    systemctl restart vllm
+  else
+    echo "vLLM API is healthy"
+  fi
+fi
+
 echo "Service check completed at $(date)"
 EOSVC
 chmod +x /var/lib/cloud/scripts/per-boot/ensure-services.sh
+
+# Execute the script immediately to start services after initial setup
+echo "Running service enablement script for first time..."
+/var/lib/cloud/scripts/per-boot/ensure-services.sh
 
 # Download the main setup script from S3
 echo "Downloading main setup script from S3..."
@@ -164,7 +209,24 @@ echo "Executing main setup script..."
 /opt/inference/main-setup.sh
 
 # Run the service check immediately after setup
-echo "Running service check..."
+echo "Running service check and ensuring services are started..."
 /var/lib/cloud/scripts/per-boot/ensure-services.sh
+
+# Verify services are running (critical for first boot)
+if systemctl is-active inference-app.service >/dev/null; then
+  echo "Inference app service is running"
+else
+  echo "Inference app service is not running, attempting to start..."
+  systemctl start inference-app.service
+fi
+
+if [ "${use_gpu}" = "true" ]; then
+  if systemctl is-active vllm.service >/dev/null; then
+    echo "vLLM service is running"
+  else
+    echo "vLLM service is not running, attempting to start..."
+    systemctl start vllm.service
+  fi
+fi
 
 echo "Bootstrap completed at $(date)"

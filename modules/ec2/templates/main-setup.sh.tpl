@@ -218,22 +218,22 @@ EOCS
 chmod +x /usr/local/bin/check-services.sh
 
 # Reboot after NVIDIA driver installation if GPU is enabled
-if [ "$USE_GPU" = "true" ]; then
-  echo "===== Scheduling reboot to complete GPU setup ====="
-  # Create a startup script to handle post-reboot tasks
+# Always create the post-reboot script regardless of GPU mode
+echo "===== Setting up post-reboot tasks ====="
+# Create a startup script to handle post-reboot tasks
 mkdir -p /var/lib/cloud/scripts/per-boot
 cat > /var/lib/cloud/scripts/per-boot/post-reboot-setup.sh << 'EOB'
 #!/bin/bash
 
 # Log outputs to a file for debugging
 exec > >(tee /var/log/post-reboot-setup.log) 2>&1
-echo "Running post-reboot setup at $$(date)"
+echo "Running post-reboot setup at $(date)"
 
 # Check if NVIDIA drivers are loaded properly
 NVIDIA_ATTEMPTS=5
 NVIDIA_READY=false
 
-for i in $$(seq 1 $NVIDIA_ATTEMPTS); do
+for i in $(seq 1 $NVIDIA_ATTEMPTS); do
   echo "Checking NVIDIA drivers (attempt $i/$NVIDIA_ATTEMPTS)..."
   if nvidia-smi > /dev/null 2>&1; then
     echo "NVIDIA drivers loaded successfully"
@@ -306,19 +306,32 @@ fi
 
 # Check final status
 echo "Final service status after reboot:"
-echo "Inference app: $$(systemctl is-active inference-app) ($$(systemctl is-enabled inference-app))"
+echo "Inference app: $(systemctl is-active inference-app) ($(systemctl is-enabled inference-app))"
 if [ "$GPU_ENABLED" = "true" ]; then
-  echo "vLLM service: $$(systemctl is-active vllm) ($$(systemctl is-enabled vllm))"
+  echo "vLLM service: $(systemctl is-active vllm) ($(systemctl is-enabled vllm))"
 fi
 docker ps
 
-echo "Post-reboot setup completed at $$(date)"
+echo "Post-reboot setup completed at $(date)"
 EOB
 chmod +x /var/lib/cloud/scripts/per-boot/post-reboot-setup.sh
 
+# Handle GPU vs non-GPU mode differently
+if [ "$USE_GPU" = "true" ]; then
   # Schedule a reboot in 1 minute to give cloud-init time to finish
-  echo "Scheduling reboot in 1 minute..."
+  echo "Scheduling reboot in 1 minute to complete NVIDIA driver installation..."
   shutdown -r +1 "Rebooting to complete NVIDIA driver installation"
+else
+  # For non-GPU mode, start services immediately (no reboot needed)
+  echo "Starting services immediately (non-GPU mode)..."
+  
+  # Start inference app directly
+  systemctl start inference-app
+  
+  # Run the service check script to verify
+  /var/lib/cloud/scripts/per-boot/ensure-services.sh
+  
+  echo "Services should now be running in non-GPU mode"
 fi
 
 echo "===== Setup completed at $(date) ====="
