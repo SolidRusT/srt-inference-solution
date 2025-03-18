@@ -127,3 +127,11 @@ resource "aws_s3_object" "override_services" {
   content = templatefile("${path.module}/../ec2/templates/override-services.sh.tpl", {})
   content_type = "text/x-shellscript"
 }
+
+# Upload manual start script to S3
+resource "aws_s3_object" "manual_start" {
+  bucket = aws_s3_bucket.scripts.id
+  key    = "scripts/manual-start.sh"
+  content = templatefile("${path.module}/../ec2/templates/manual-start.sh.tpl", {})
+  content_type = "text/x-shellscript"
+}

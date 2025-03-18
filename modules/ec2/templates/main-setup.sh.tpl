@@ -137,6 +137,11 @@ chmod +x /opt/inference/scripts/override-services.sh
 echo "Running service override script..."
 /opt/inference/scripts/override-services.sh
 
+# Download the manual start script
+echo "Downloading manual start script..."
+aws s3 cp s3://$SCRIPTS_BUCKET/scripts/manual-start.sh /usr/local/bin/manual-start.sh
+chmod +x /usr/local/bin/manual-start.sh
+
 # Download the super force start script for emergency recovery
 echo "Downloading super force start script..."
 aws s3 cp s3://$SCRIPTS_BUCKET/scripts/super-force-start.sh /usr/local/bin/super-force-start.sh

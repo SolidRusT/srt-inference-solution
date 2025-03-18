@@ -29,9 +29,9 @@ LOG_FILE="/var/log/ensure-services.log"
 CHECK_TIMESTAMP="/tmp/last-service-check"
 exec > >(tee -a $LOG_FILE) 2>&1
 
-echo "\n\n================================================="
+echo -e "\n\n================================================="
 echo "Running service check at $(date)"
-echo "=================================================\n"
+echo -e "=================================================\n"
 
 # Create a timestamp for this run
 date > $CHECK_TIMESTAMP
@@ -40,6 +40,16 @@ date > $CHECK_TIMESTAMP
 USE_GPU=false
 if [ -f /opt/inference/config.env ]; then
   source /opt/inference/config.env
+  if [ "$USE_GPU" = "true" ]; then
+    USE_GPU=true
+    echo "GPU mode is enabled in configuration"
+  else
+    echo "GPU mode is disabled in configuration"
+  fi
+else
+  echo "Configuration file not found, assuming non-GPU mode"
+fi
+
 # Clean up any potential lingering containers to avoid conflicts
 echo "Cleaning up any existing containers..."
 docker rm -f inference-app 2>/dev/null || echo "No inference-app container to remove"
@@ -83,7 +93,7 @@ fi
 # Start services in the right order with retries
 MAX_RETRIES=5
 
-echo "\n===== Starting services... ====="
+echo -e "\n===== Starting services... ====="
 
 if [ "$USE_GPU" = "true" ]; then
   echo "Starting vLLM service first in GPU mode..."
@@ -165,7 +175,7 @@ if [ "$USE_GPU" = "true" ]; then
 fi
 
 # Now start the inference app
-echo "\n===== Starting inference-app service ====="
+echo -e "\n===== Starting inference-app service ====="
 RETRY=0
 while [ $RETRY -lt $MAX_RETRIES ]; do
   # Check and clean up any existing containers
@@ -336,7 +346,7 @@ if [ -f /usr/local/bin/force-start-services.sh ]; then
   
   # If regular force start failed, try super force start
   if [ "$SERVICE_SUCCESS" = "false" ] && [ -f /usr/local/bin/super-force-start.sh ]; then
-    echo "\n\n===== ATTEMPTING SUPER FORCE START =====\n\n"
+    echo -e "\n\n===== ATTEMPTING SUPER FORCE START =====\n\n"
     /usr/local/bin/super-force-start.sh
   fi
 else
@@ -350,25 +360,25 @@ else
   # Try super force start if direct starts failed
   if ! systemctl is-active inference-app.service >/dev/null || ([ "${use_gpu}" = "true" ] && ! systemctl is-active vllm.service >/dev/null); then
     if [ -f /usr/local/bin/super-force-start.sh ]; then
-      echo "\n\n===== ATTEMPTING SUPER FORCE START =====\n\n"
+      echo -e "\n\n===== ATTEMPTING SUPER FORCE START =====\n\n"
       /usr/local/bin/super-force-start.sh
     fi
   fi
 fi
 
 # Extended diagnostics
-echo "\n===== EXTENDED DIAGNOSTICS ====="
+echo -e "\n===== EXTENDED DIAGNOSTICS ====="
 echo "Running processes:" 
 ps aux | grep -E 'docker|vllm|inference' || true
-echo "\nNetwork status:"
+echo -e "\nNetwork status:"
 netstat -tulpn | grep -E "(8080|8000|443)" || echo "No services listening on API ports"
-echo "\nDocker service status:"
+echo -e "\nDocker service status:"
 systemctl status docker --no-pager || true
-echo "\nFile permissions check:"
+echo -e "\nFile permissions check:"
 ls -la /etc/systemd/system/inference-app.service /etc/systemd/system/vllm.service || true
-echo "\nSwap info:"
+echo -e "\nSwap info:"
 free -m
-echo "\nDisk space:"
+echo -e "\nDisk space:"
 df -h
 
 echo "Bootstrap completed at $(date)"

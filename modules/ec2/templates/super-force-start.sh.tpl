@@ -2,7 +2,7 @@
 # This script aggressively forces services to start using multiple methods
 # It's designed as a last resort when services are not starting properly
 
-echo "========================================================"
+echo -e "\n\n========================================================"
 echo "SUPER FORCE START: Attempting to aggressively start services"
 echo "========================================================"
 
