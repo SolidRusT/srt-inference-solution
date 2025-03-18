@@ -107,6 +107,41 @@ fi
 # Set proper permissions
 chmod 0644 /etc/cron.d/inference-maintenance
 
+# Create a systemd service to ensure our inference services are started
+cat > /etc/systemd/system/ensure-inference-services.service << 'EOSERVICE'
+[Unit]
+Description=Ensure Inference Services are Running
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/var/lib/cloud/scripts/per-boot/ensure-services.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOSERVICE
+
+# Enable the service
+systemctl daemon-reload
+systemctl enable ensure-inference-services.service
+systemctl start ensure-inference-services.service
+
+# Download the systemd service override script
+echo "Downloading service override script..."
+aws s3 cp s3://$SCRIPTS_BUCKET/scripts/override-services.sh /opt/inference/scripts/
+chmod +x /opt/inference/scripts/override-services.sh
+
+# Run the service override script
+echo "Running service override script..."
+/opt/inference/scripts/override-services.sh
+
+# Download the super force start script for emergency recovery
+echo "Downloading super force start script..."
+aws s3 cp s3://$SCRIPTS_BUCKET/scripts/super-force-start.sh /usr/local/bin/super-force-start.sh
+chmod +x /usr/local/bin/super-force-start.sh
+
 # Enable and start the services with more robust error handling
 echo "===== Initializing services ====="
 systemctl daemon-reload

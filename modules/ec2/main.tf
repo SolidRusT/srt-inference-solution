@@ -202,7 +202,7 @@ locals {
     aws_region       = var.region
     scripts_bucket   = var.scripts_bucket
     main_setup_key   = var.main_setup_key
-    use_gpu          = var.use_gpu
+    use_gpu          = tostring(var.use_gpu)
   })
 }
 

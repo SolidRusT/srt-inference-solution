@@ -94,3 +94,35 @@ resource "aws_s3_object" "main_setup" {
   })
   content_type = "text/x-shellscript"
 }
+
+# Upload watchdog script to S3
+resource "aws_s3_object" "inference_watchdog" {
+  bucket = aws_s3_bucket.scripts.id
+  key    = "scripts/inference-watchdog.sh"
+  content = templatefile("${path.module}/../ec2/templates/inference-watchdog.sh.tpl", {})
+  content_type = "text/x-shellscript"
+}
+
+# Upload watchdog service file to S3
+resource "aws_s3_object" "inference_watchdog_service" {
+  bucket = aws_s3_bucket.scripts.id
+  key    = "scripts/inference-watchdog.service"
+  content = templatefile("${path.module}/../ec2/templates/inference-watchdog.service.tpl", {})
+  content_type = "text/plain"
+}
+
+# Upload super force start script to S3
+resource "aws_s3_object" "super_force_start" {
+  bucket = aws_s3_bucket.scripts.id
+  key    = "scripts/super-force-start.sh"
+  content = templatefile("${path.module}/../ec2/templates/super-force-start.sh.tpl", {})
+  content_type = "text/x-shellscript"
+}
+
+# Upload override services script to S3
+resource "aws_s3_object" "override_services" {
+  bucket = aws_s3_bucket.scripts.id
+  key    = "scripts/override-services.sh"
+  content = templatefile("${path.module}/../ec2/templates/override-services.sh.tpl", {})
+  content_type = "text/x-shellscript"
+}

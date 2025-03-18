@@ -4,6 +4,10 @@
 set -e
 echo "===== Creating systemd services ====="
 
+# Ensure we display all commands and errors
+set -x
+exec > >(tee /var/log/services-setup.log) 2>&1
+
 # Create vLLM service
 cat > /etc/systemd/system/vllm.service << EOT
 [Unit]
@@ -101,3 +105,72 @@ cat >> /etc/systemd/system/inference-app.service << EOT
 [Install]
 WantedBy=multi-user.target
 EOT
+
+# Create "ensure services" service that will run on every boot
+cat > /etc/systemd/system/ensure-inference-services.service << EOT
+[Unit]
+Description=Ensure Inference Services are Running
+After=docker.service network.target
+Wants=docker.service multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/var/lib/cloud/scripts/per-boot/ensure-services.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOT
+
+# Now initialize all the services
+echo "===== Initializing services ====="
+
+# Reload systemd to recognize our new service files
+systemctl daemon-reload
+
+# Enable all services to start on boot
+echo "Enabling services to start on boot"
+systemctl enable inference-app.service ensure-inference-services.service
+if [ "${use_gpu}" = "true" ]; then
+  systemctl enable vllm.service
+fi
+
+# Force start our services immediately
+echo "Force starting services now..."
+
+if [ "${use_gpu}" = "true" ]; then
+  echo "Starting vLLM service (GPU mode)..."
+  systemctl start vllm.service || echo "Warning: vLLM failed to start, but this may be expected in GPU mode before reboot"
+  sleep 3
+  systemctl status vllm.service || true
+fi
+
+echo "Starting inference app service..."
+systemctl start inference-app.service || echo "Warning: inference-app failed to start on first attempt"
+sleep 3
+systemctl status inference-app.service || true
+
+# Start the ensure-services service
+echo "Starting ensure-inference-services service..."
+systemctl start ensure-inference-services.service || echo "Warning: ensure-inference-services failed to start"
+sleep 1 
+systemctl status ensure-inference-services.service || true
+
+# Create a cron job to check services every minute during the first hour after boot
+echo "Setting up frequent service check cron job for first hour..."
+cat > /etc/cron.d/initial-service-check << EOC
+# Check services every minute for the first hour after boot
+* * * * * root /var/lib/cloud/scripts/per-boot/ensure-services.sh > /dev/null 2>&1
+EOC
+chmod 0644 /etc/cron.d/initial-service-check
+
+# Log our final status
+echo "===== Service setup completed at $(date) ====="
+echo "Service statuses:"
+systemctl status inference-app.service --no-pager || true
+if [ "${use_gpu}" = "true" ]; then
+  systemctl status vllm.service --no-pager || true
+fi
+systemctl status ensure-inference-services.service --no-pager || true
+echo "Running containers:"
+docker ps || true

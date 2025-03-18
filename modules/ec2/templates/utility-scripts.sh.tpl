@@ -349,3 +349,87 @@ else
 fi
 EOL
 chmod +x /usr/local/bin/restart-vllm.sh
+
+# Download and set up the watchdog script and service
+echo "Setting up inference watchdog service..."
+
+# Download the watchdog script from S3 and make it executable
+aws s3 cp s3://${scripts_bucket}/scripts/inference-watchdog.sh /usr/local/bin/inference-watchdog.sh
+chmod +x /usr/local/bin/inference-watchdog.sh
+
+# Download the service file
+aws s3 cp s3://${scripts_bucket}/scripts/inference-watchdog.service /etc/systemd/system/inference-watchdog.service
+
+# Enable and start the watchdog service
+systemctl daemon-reload
+systemctl enable inference-watchdog.service
+systemctl start inference-watchdog.service || echo "Warning: Failed to start watchdog service immediately, it will be started on next boot"
+
+# Create a simple script to force start all services
+cat > /usr/local/bin/force-start-services.sh << 'EOF'
+#!/bin/bash
+
+echo "===== Force starting all inference services ====="
+echo "Starting at $(date)"
+
+# Get GPU mode from config
+USE_GPU=false
+if [ -f /opt/inference/config.env ]; then
+  source /opt/inference/config.env
+  if [ "$USE_GPU" = "true" ]; then
+    USE_GPU=true
+    echo "GPU mode is enabled"
+  else
+    echo "GPU mode is disabled"
+  fi
+fi
+
+# Force stop all services first
+echo "Stopping any existing services..."
+systemctl stop inference-app.service || true
+if [ "$USE_GPU" = "true" ]; then
+  systemctl stop vllm.service || true
+fi
+
+# Stop and remove any running containers
+echo "Cleaning up any existing containers..."
+docker stop inference-app 2>/dev/null || true
+docker rm inference-app 2>/dev/null || true
+if [ "$USE_GPU" = "true" ]; then
+  docker stop vllm-service 2>/dev/null || true
+  docker rm vllm-service 2>/dev/null || true
+fi
+
+# Wait for cleanup
+sleep 2
+
+# Start services in correct order
+if [ "$USE_GPU" = "true" ]; then
+  echo "Starting vLLM service..."
+  systemctl start vllm.service
+  sleep 5
+  systemctl status vllm.service
+  
+  # Wait for vLLM to initialize
+  if [ -f /usr/local/bin/wait-for-vllm.sh ]; then
+    echo "Waiting for vLLM to be ready..."
+    /usr/local/bin/wait-for-vllm.sh || echo "vLLM service not responding yet"
+  else
+    echo "wait-for-vllm.sh not found, waiting 30 seconds instead..."
+    sleep 30
+  fi
+fi
+
+echo "Starting inference-app service..."
+systemctl start inference-app.service
+sleep 5
+systemctl status inference-app.service
+
+echo "Checking for running containers..."
+docker ps
+
+echo "===== Service force start completed at $(date) ====="
+EOF
+chmod +x /usr/local/bin/force-start-services.sh
+
+echo "Watchdog service and scripts installed"

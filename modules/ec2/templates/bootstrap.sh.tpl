@@ -40,14 +40,11 @@ date > $CHECK_TIMESTAMP
 USE_GPU=false
 if [ -f /opt/inference/config.env ]; then
   source /opt/inference/config.env
-  if [ "$USE_GPU" = "true" ]; then
-    USE_GPU=true
-    echo "GPU mode is enabled in configuration"
-  else
-    echo "GPU mode is disabled in configuration"
-  fi
-else
-  echo "Configuration file not found, assuming non-GPU mode"
+# Clean up any potential lingering containers to avoid conflicts
+echo "Cleaning up any existing containers..."
+docker rm -f inference-app 2>/dev/null || echo "No inference-app container to remove"
+if [ "$USE_GPU" = "true" ]; then
+  docker rm -f vllm-service 2>/dev/null || echo "No vllm-service container to remove"
 fi
 
 # Check if docker is running
@@ -55,13 +52,21 @@ if ! systemctl is-active docker >/dev/null 2>&1; then
   echo "Docker service not running, starting..."
   systemctl start docker
   sleep 5
-fi
-
-# Clean up any potential lingering containers to avoid conflicts
-echo "Cleaning up any existing containers..."
-docker rm -f inference-app 2>/dev/null || echo "No inference-app container to remove"
-if [ "$USE_GPU" = "true" ]; then
-  docker rm -f vllm-service 2>/dev/null || echo "No vllm-service container to remove"
+  
+  if ! systemctl is-active docker >/dev/null 2>&1; then
+    echo "ERROR: Failed to start Docker service! All other services will fail."
+    # Try more aggressive Docker restart
+    systemctl stop docker
+    sleep 2
+    systemctl daemon-reload
+    systemctl start docker
+    sleep 5
+    
+    if ! systemctl is-active docker >/dev/null 2>&1; then
+      echo "CRITICAL ERROR: Docker service still not starting. System may need manual intervention."
+      exit 1
+    fi
+  fi
 fi
 
 # Check if services are enabled
@@ -76,7 +81,9 @@ if ! systemctl is-enabled inference-app >/dev/null 2>&1; then
 fi
 
 # Start services in the right order with retries
-MAX_RETRIES=3
+MAX_RETRIES=5
+
+echo "\n===== Starting services... ====="
 
 if [ "$USE_GPU" = "true" ]; then
   echo "Starting vLLM service first in GPU mode..."
@@ -96,9 +103,29 @@ if [ "$USE_GPU" = "true" ]; then
   # Start vLLM with retries
   RETRY=0
   while [ $RETRY -lt $MAX_RETRIES ]; do
+    # First verify no containers are running
+    if docker ps | grep -q vllm-service; then
+      echo "vLLM container already running, stopping it first..."
+      docker stop vllm-service
+      docker rm vllm-service
+      sleep 2
+    fi
+    
     if systemctl start vllm; then
       echo "vLLM service started successfully"
-      break
+      
+      # Verify container is actually running
+      sleep 5
+      if docker ps | grep -q vllm-service; then
+        echo "vLLM container confirmed running"
+        break
+      else
+        echo "vLLM service started but container is not running"
+        RETRY=$((RETRY+1))
+        echo "Restarting vllm service (attempt $RETRY/$MAX_RETRIES)"
+        systemctl restart vllm
+        sleep 5
+      fi
     else
       RETRY=$((RETRY+1))
       echo "Failed to start vLLM service (attempt $RETRY/$MAX_RETRIES)"
@@ -116,17 +143,54 @@ if [ "$USE_GPU" = "true" ]; then
   if command -v /usr/local/bin/wait-for-vllm.sh >/dev/null 2>&1; then
     /usr/local/bin/wait-for-vllm.sh || echo "vLLM API not responding yet, but continuing"
   else
-    sleep 20  # Fallback if wait script is not available
+    # Fallback if wait script is not available
+    MAX_API_CHECKS=15
+    API_CHECK=0
+    while [ $API_CHECK -lt $MAX_API_CHECKS ]; do
+      API_CHECK=$((API_CHECK+1))
+      echo "Checking vLLM API (attempt $API_CHECK/$MAX_API_CHECKS)..."
+      if curl -s http://localhost:8000/health > /dev/null; then
+        echo "vLLM API is responding!"
+        break
+      else
+        echo "vLLM API not responding yet"
+        sleep 10
+      fi
+      
+      if [ $API_CHECK -eq $MAX_API_CHECKS ]; then
+        echo "WARNING: vLLM API not responding after maximum checks"
+      fi
+    done
   fi
 fi
 
 # Now start the inference app
-echo "Starting inference-app service..."
+echo "\n===== Starting inference-app service ====="
 RETRY=0
 while [ $RETRY -lt $MAX_RETRIES ]; do
+  # Check and clean up any existing containers
+  if docker ps | grep -q inference-app; then
+    echo "Inference app container already running, stopping it first..."
+    docker stop inference-app
+    docker rm inference-app
+    sleep 2
+  fi
+  
   if systemctl start inference-app; then
     echo "Inference app service started successfully"
-    break
+    
+    # Verify container is actually running
+    sleep 5
+    if docker ps | grep -q inference-app; then
+      echo "Inference app container confirmed running"
+      break
+    else
+      echo "Inference app service started but container is not running"
+      RETRY=$((RETRY+1))
+      echo "Restarting inference-app service (attempt $RETRY/$MAX_RETRIES)"
+      systemctl restart inference-app
+      sleep 5
+    fi
   else
     RETRY=$((RETRY+1))
     echo "Failed to start inference-app service (attempt $RETRY/$MAX_RETRIES)"
@@ -136,6 +200,26 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
     else
       echo "Maximum retries reached for inference-app service"
     fi
+  fi
+done
+
+# Check the API health
+echo "Checking inference API health..."
+MAX_API_CHECKS=10
+API_CHECK=0
+while [ $API_CHECK -lt $MAX_API_CHECKS ]; do
+  API_CHECK=$((API_CHECK+1))
+  echo "Checking inference API (attempt $API_CHECK/$MAX_API_CHECKS)..."
+  if curl -s http://localhost:8080/health > /dev/null; then
+    echo "Inference API is responding! Service is healthy."
+    break
+  else
+    echo "Inference API not responding yet"
+    sleep 5
+  fi
+  
+  if [ $API_CHECK -eq $MAX_API_CHECKS ]; then
+    echo "WARNING: Inference API not responding after maximum checks"
   fi
 done
 
@@ -228,5 +312,63 @@ if [ "${use_gpu}" = "true" ]; then
     systemctl start vllm.service
   fi
 fi
+
+# Check cloud-init status
+echo "Checking cloud-init status..."
+cloud-init status --long || echo "Cloud-init status command failed"
+
+# Try to force start the services one last time
+echo "Force starting services with diagnostics..."
+if [ -f /usr/local/bin/force-start-services.sh ]; then
+  /usr/local/bin/force-start-services.sh
+  
+  # Check if services are now running
+  SERVICE_SUCCESS=true
+  if ! systemctl is-active inference-app.service >/dev/null; then
+    echo "Regular force start didn't work for inference-app, trying super force start..."
+    SERVICE_SUCCESS=false
+  fi
+  
+  if [ "${use_gpu}" = "true" ] && ! systemctl is-active vllm.service >/dev/null; then
+    echo "Regular force start didn't work for vLLM, trying super force start..."
+    SERVICE_SUCCESS=false
+  fi
+  
+  # If regular force start failed, try super force start
+  if [ "$SERVICE_SUCCESS" = "false" ] && [ -f /usr/local/bin/super-force-start.sh ]; then
+    echo "\n\n===== ATTEMPTING SUPER FORCE START =====\n\n"
+    /usr/local/bin/super-force-start.sh
+  fi
+else
+  echo "Force start script not found, attempting direct service starts..."
+  systemctl daemon-reload
+  systemctl start inference-app.service || echo "Failed to start inference-app service"
+  if [ "${use_gpu}" = "true" ]; then
+    systemctl start vllm.service || echo "Failed to start vLLM service"
+  fi
+  
+  # Try super force start if direct starts failed
+  if ! systemctl is-active inference-app.service >/dev/null || ([ "${use_gpu}" = "true" ] && ! systemctl is-active vllm.service >/dev/null); then
+    if [ -f /usr/local/bin/super-force-start.sh ]; then
+      echo "\n\n===== ATTEMPTING SUPER FORCE START =====\n\n"
+      /usr/local/bin/super-force-start.sh
+    fi
+  fi
+fi
+
+# Extended diagnostics
+echo "\n===== EXTENDED DIAGNOSTICS ====="
+echo "Running processes:" 
+ps aux | grep -E 'docker|vllm|inference' || true
+echo "\nNetwork status:"
+netstat -tulpn | grep -E "(8080|8000|443)" || echo "No services listening on API ports"
+echo "\nDocker service status:"
+systemctl status docker --no-pager || true
+echo "\nFile permissions check:"
+ls -la /etc/systemd/system/inference-app.service /etc/systemd/system/vllm.service || true
+echo "\nSwap info:"
+free -m
+echo "\nDisk space:"
+df -h
 
 echo "Bootstrap completed at $(date)"
